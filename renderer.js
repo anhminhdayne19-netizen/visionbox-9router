@@ -187,7 +187,12 @@
   }
 
   function getApiBaseUrl() {
-    const raw = baseUrlInput?.value?.trim();
+    let raw = (baseUrlInput?.value || '').trim();
+    // Tự động gọt bỏ dấu phẩy (,), dấu chấm phẩy, nháy kép, khoảng trắng thừa
+    raw = raw.replace(/[,\s"';]+$/, '').trim();
+    // Gọt bỏ /v1 hoặc /v1/ ở cuối nếu người dùng dán cả endpoint vào
+    raw = raw.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
+
     if (getApiProvider() === 'gemini') {
       return 'https://generativelanguage.googleapis.com';
     }
@@ -735,6 +740,13 @@ const isAppShortcut = allowedAppShortcuts.some(s =>
   if (providerSelect) {
     providerSelect.addEventListener('change', () => {
       updateProviderUI();
+      scheduleSaveConfig();
+    });
+  }
+
+  if (baseUrlInput) {
+    baseUrlInput.addEventListener('blur', () => {
+      baseUrlInput.value = baseUrlInput.value.replace(/[,\s"';]+$/, '').replace(/\/v1\/?$/, '').replace(/\/+$/, '');
       scheduleSaveConfig();
     });
   }
