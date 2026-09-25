@@ -197,15 +197,85 @@
     return raw || 'https://generativelanguage.googleapis.com';
   }
 
+  const GEMINI_DEFAULT_MODELS = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-3-flash-preview'
+  ];
+
+  async function populate9RouterModels() {
+    try {
+      const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+      const res = await fetch(`${baseUrl}/v1/models`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.data) && data.data.length > 0) {
+        const currentModel = modelSelect.value;
+        const models = data.data
+          .filter(m => m.capabilities?.vision || m.id.includes('flash') || m.id.includes('gemini') || m.id.includes('gpt') || m.id.includes('claude'))
+          .map(m => m.id);
+        if (models.length > 0) {
+          modelSelect.innerHTML = '';
+          models.forEach(id => {
+            const opt = document.createElement('option');
+            opt.value = id;
+            opt.textContent = id;
+            modelSelect.appendChild(opt);
+          });
+          const customOpt = document.createElement('option');
+          customOpt.value = '__custom__';
+          customOpt.textContent = t('model_other');
+          modelSelect.appendChild(customOpt);
+
+          if (models.includes(currentModel)) {
+            modelSelect.value = currentModel;
+          } else if (models.includes('ag/gemini-3.8-flash')) {
+            modelSelect.value = 'ag/gemini-3.8-flash';
+          } else {
+            modelSelect.value = models[0];
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Could not auto-fetch 9Router models:', e);
+    }
+  }
+
+  function restoreGeminiModels() {
+    const currentModel = modelSelect.value;
+    if (GEMINI_DEFAULT_MODELS.includes(currentModel)) return;
+    modelSelect.innerHTML = '';
+    GEMINI_DEFAULT_MODELS.forEach((m, idx) => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      if (idx === 1) opt.selected = true;
+      modelSelect.appendChild(opt);
+    });
+    const customOpt = document.createElement('option');
+    customOpt.value = '__custom__';
+    customOpt.textContent = t('model_other');
+    modelSelect.appendChild(customOpt);
+    if (GEMINI_DEFAULT_MODELS.includes(currentModel)) {
+      modelSelect.value = currentModel;
+    }
+  }
+
   function updateProviderUI() {
     const provider = getApiProvider();
     if (provider === 'gemini') {
+      restoreGeminiModels();
       if (baseUrlField) baseUrlField.style.display = 'none';
       if (apiKeyLabel) apiKeyLabel.textContent = t('key_label_gemini');
       if (apiKeyInput) apiKeyInput.placeholder = t('key_placeholder_gemini');
       if (getKeyText) getKeyText.textContent = t('get_key');
       if (getKeyBtn) getKeyBtn.title = 'Get an API key from Google AI Studio';
     } else if (provider === '9router') {
+      populate9RouterModels();
       if (baseUrlField) baseUrlField.style.display = 'flex';
       if (apiKeyLabel) apiKeyLabel.textContent = t('key_label_9router');
       if (apiKeyInput) apiKeyInput.placeholder = t('key_placeholder_9router');
@@ -1964,41 +2034,77 @@ Return ONLY the refined translation, one line per bubble, in the same order as a
   }
 
   async function callGemini({ apiKey, model, promptText, base64Image, mimeType, temperature, maxOutputTokens, itemIndex }) {
-    const body = {
-      contents: [{
-        parts: [
-          { text: promptText },
-          {
-            inline_data: { mime_type: mimeType || 'image/jpeg', data: base64Image },
-            inlineData: { mimeType: mimeType || 'image/jpeg', data: base64Image }
-          }
-        ]
-      }],
-      generationConfig: {
-        temperature: temperature ?? 0.2,
-        topP: 0.9,
-        topK: 40,
-        maxOutputTokens: maxOutputTokens ?? 4096
-      }
-    };
+    const is9Router = getApiProvider() === '9router';
+    const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
 
     let attempt = 0;
     let busyAttempt = 0;
     const triedModels = new Set();
     while (true) {
-      const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
-      const keyQuery = apiKey ? `?key=${encodeURIComponent(apiKey)}` : '';
-      const url = `${baseUrl}/v1beta/models/${model}:generateContent${keyQuery}`;
-      const headers = { 'Content-Type': 'application/json' };
-      if (apiKey) {
-        headers['x-goog-api-key'] = apiKey;
-        headers['Authorization'] = `Bearer ${apiKey}`;
+      let url;
+      let headers = { 'Content-Type': 'application/json' };
+      let bodyData;
+
+      if (is9Router) {
+        url = `${baseUrl}/v1/chat/completions`;
+        let modelName = model;
+        if (!modelName.includes('/') && !modelName.startsWith('gpt-')) {
+          modelName = 'ag/' + modelName;
+        }
+        if (apiKey) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+        bodyData = {
+          model: modelName,
+          stream: false,
+          temperature: temperature ?? 0.2,
+          max_tokens: maxOutputTokens ?? 4096,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: promptText },
+                { type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${base64Image}` } }
+              ]
+            }
+          ]
+        };
+      } else {
+        const keyQuery = apiKey ? `?key=${encodeURIComponent(apiKey)}` : '';
+        url = `${baseUrl}/v1beta/models/${model}:generateContent${keyQuery}`;
+        if (apiKey) {
+          headers['x-goog-api-key'] = apiKey;
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+        bodyData = {
+          contents: [{
+            parts: [
+              { text: promptText },
+              {
+                inline_data: { mime_type: mimeType || 'image/jpeg', data: base64Image },
+                inlineData: { mimeType: mimeType || 'image/jpeg', data: base64Image }
+              }
+            ]
+          }],
+          generationConfig: {
+            temperature: temperature ?? 0.2,
+            topP: 0.9,
+            topK: 40,
+            maxOutputTokens: maxOutputTokens ?? 4096
+          }
+        };
       }
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(body)
-      });
+
+      let response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify(bodyData)
+        });
+      } catch (networkErr) {
+        throw new Error(`${networkErr.message} (Kiểm tra lại xem ${is9Router ? '9Router có đang chạy ở ' + baseUrl + ' không' : 'kết nối mạng'})`);
+      }
 
       // Dem CHINH XAC moi lan thuc su goi API (moi lan fetch, ke ca cac lan
       // bi 429 phai retry), khong dem trung, khong dem hut - de trang usage
