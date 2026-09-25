@@ -31,6 +31,20 @@
 
   <div class="topbar-controls">
     <div class="field">
+      <label for="provider-select" data-i18n="provider_label">Provider</label>
+      <select id="provider-select">
+        <option value="gemini" data-i18n="provider_gemini" selected>Google Gemini (Direct)</option>
+        <option value="9router" data-i18n="provider_9router">9Router (Local Gateway)</option>
+        <option value="custom" data-i18n="provider_custom">Custom Proxy</option>
+      </select>
+    </div>
+
+    <div class="field" id="base-url-field" style="display:none">
+      <label for="base-url-input" data-i18n="base_url_label">Base URL</label>
+      <input type="text" id="base-url-input" placeholder="http://localhost:20128" value="http://localhost:20128" />
+    </div>
+
+    <div class="field">
       <label for="model-select" data-i18n="model_label">Model</label>
       <select id="model-select">
         <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
@@ -46,11 +60,11 @@
     </div>
 
     <div class="field">
-      <label for="api-key-input" data-i18n="api_key_label">Gemini API Key</label>
+      <label for="api-key-input" id="api-key-label" data-i18n="key_label_gemini">Gemini API Key</label>
       <div class="input-with-btn">
-        <input type="password" id="api-key-input" data-i18n="api_key_placeholder" data-i18n-placeholder placeholder="Enter API key from Google AI Studio" />
+        <input type="password" id="api-key-input" data-i18n="key_placeholder_gemini" data-i18n-placeholder placeholder="Enter API key from Google AI Studio" />
         <button id="toggle-key-btn" class="icon-btn" title="Show/hide key"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg></span></button>
-        <button type="button" id="get-key-btn" class="icon-btn" title="Get an API key from Google AI Studio"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg></span> <span data-i18n="get_key">Get key</span></button>
+        <button type="button" id="get-key-btn" class="icon-btn" title="Get key / Open dashboard"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg></span> <span id="get-key-text" data-i18n="get_key">Get key</span></button>
       </div>
     </div>
   </div>

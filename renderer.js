@@ -173,9 +173,52 @@
   const contentTypeMenu = document.getElementById('content-type-menu');
   const modelSelect = document.getElementById('model-select');
   const modelCustomInput = document.getElementById('model-custom-input');
+  const providerSelect = document.getElementById('provider-select');
+  const baseUrlField = document.getElementById('base-url-field');
+  const baseUrlInput = document.getElementById('base-url-input');
+  const apiKeyLabel = document.getElementById('api-key-label');
   const apiKeyInput = document.getElementById('api-key-input');
   const toggleKeyBtn = document.getElementById('toggle-key-btn');
   const getKeyBtn = document.getElementById('get-key-btn');
+  const getKeyText = document.getElementById('get-key-text');
+
+  function getApiProvider() {
+    return providerSelect?.value || 'gemini';
+  }
+
+  function getApiBaseUrl() {
+    const raw = baseUrlInput?.value?.trim();
+    if (getApiProvider() === 'gemini') {
+      return 'https://generativelanguage.googleapis.com';
+    }
+    if (getApiProvider() === '9router') {
+      return raw || 'http://localhost:20128';
+    }
+    return raw || 'https://generativelanguage.googleapis.com';
+  }
+
+  function updateProviderUI() {
+    const provider = getApiProvider();
+    if (provider === 'gemini') {
+      if (baseUrlField) baseUrlField.style.display = 'none';
+      if (apiKeyLabel) apiKeyLabel.textContent = t('key_label_gemini');
+      if (apiKeyInput) apiKeyInput.placeholder = t('key_placeholder_gemini');
+      if (getKeyText) getKeyText.textContent = t('get_key');
+      if (getKeyBtn) getKeyBtn.title = 'Get an API key from Google AI Studio';
+    } else if (provider === '9router') {
+      if (baseUrlField) baseUrlField.style.display = 'flex';
+      if (apiKeyLabel) apiKeyLabel.textContent = t('key_label_9router');
+      if (apiKeyInput) apiKeyInput.placeholder = t('key_placeholder_9router');
+      if (getKeyText) getKeyText.textContent = t('open_9router');
+      if (getKeyBtn) getKeyBtn.title = 'Open 9Router Dashboard';
+    } else {
+      if (baseUrlField) baseUrlField.style.display = 'flex';
+      if (apiKeyLabel) apiKeyLabel.textContent = t('key_label_custom');
+      if (apiKeyInput) apiKeyInput.placeholder = t('key_placeholder_custom');
+      if (getKeyText) getKeyText.textContent = t('get_key');
+      if (getKeyBtn) getKeyBtn.title = 'Open API Dashboard';
+    }
+  }
   // Thong bao (toast) gio hien ngay trong pill nav-fab-toggle thay vi goc man hinh
   const navFabToastDot = document.getElementById('nav-fab-toast-dot');
   const navFabToastText = document.getElementById('nav-fab-toast-text');
@@ -302,6 +345,7 @@ function applyLanguage(lang) {
 
   // Cập nhật selection bar
   updateSelectionUI(); // Hàm này sẽ được sửa để dùng t() bên trong
+  updateProviderUI();
 
   // Lưu config
   scheduleSaveConfig();
@@ -339,6 +383,7 @@ const isInEditableEditBox = e.target && e.target.isContentEditable &&
    targetId === 'summary-ocr-all' || targetId === 'summary-translation-all');
 const isCtrlAAllowedHere = ctrl && !shift && key === 'a' &&
   (targetId === 'nav-fab-prompt-input' || targetId === 'api-key-input' ||
+   targetId === 'base-url-input' ||
    targetId === 'replace-find-input' || targetId === 'replace-with-input' || isInEditableEditBox);
 
 // Chỉ cho phép nếu là phím tắt của ứng dụng, hoặc các phím thông thường...
@@ -470,6 +515,8 @@ const isAppShortcut = allowedAppShortcuts.some(s =>
 
   function buildConfigPayload() {
     return {
+      apiProvider: getApiProvider(),
+      apiBaseUrl: baseUrlInput ? baseUrlInput.value.trim() : 'http://localhost:20128',
       apiKey: apiKeyInput.value.trim(),
       model: getSelectedModel(),
       contentType: currentContentType,
@@ -495,6 +542,13 @@ const isAppShortcut = allowedAppShortcuts.some(s =>
 
   async function loadConfig() {
     const cfg = (await window.appConfig.get()) || {};
+    if (cfg.apiProvider && providerSelect) {
+      providerSelect.value = cfg.apiProvider;
+    }
+    if (cfg.apiBaseUrl && baseUrlInput) {
+      baseUrlInput.value = cfg.apiBaseUrl;
+    }
+    updateProviderUI();
     if (cfg.apiKey) apiKeyInput.value = cfg.apiKey;
     if (cfg.model) {
       const knownValues = Array.from(modelSelect.options).map(o => o.value);
@@ -601,10 +655,19 @@ const isAppShortcut = allowedAppShortcuts.some(s =>
 
   setInterval(performAutoSave, AUTO_SAVE_INTERVAL_MS);
 
-  [apiKeyInput, sourceLangSelect, targetLangSelect, skipSfxToggle, autoSwitchModelToggle].forEach(el => {
-    el.addEventListener('change', scheduleSaveConfig);
-    el.addEventListener('input', scheduleSaveConfig);
+  [apiKeyInput, baseUrlInput, sourceLangSelect, targetLangSelect, skipSfxToggle, autoSwitchModelToggle].forEach(el => {
+    if (el) {
+      el.addEventListener('change', scheduleSaveConfig);
+      el.addEventListener('input', scheduleSaveConfig);
+    }
   });
+
+  if (providerSelect) {
+    providerSelect.addEventListener('change', () => {
+      updateProviderUI();
+      scheduleSaveConfig();
+    });
+  }
 
   modelSelect.addEventListener('change', () => {
     modelCustomInput.style.display = modelSelect.value === '__custom__' ? 'block' : 'none';
@@ -1371,7 +1434,10 @@ document.getElementById('lang-select').addEventListener('change', (e) => {
   });
 
 getKeyBtn.addEventListener('click', async () => {
-  const url = 'https://aistudio.google.com/api-keys';
+  let url = 'https://aistudio.google.com/api-keys';
+  if (getApiProvider() === '9router') {
+    url = getApiBaseUrl();
+  }
   try {
     // Gọi command Rust đã có sẵn
     if (window.__TAURI__?.core?.invoke) {
@@ -1397,6 +1463,7 @@ getKeyBtn.addEventListener('click', async () => {
   // Kiem tra o API key da co noi dung chua TRUOC KHI lam bat ky viec gi khac
   // (doc anh, dung base64...) de khong ton thoi gian xu ly neu chua co key.
   async function ensureApiKeyOrWarn() {
+    if (getApiProvider() === '9router') return true;
     if (apiKeyInput.value.trim()) return true;
     await showAlertDialog(t('enter_api_key_first'));
     apiKeyInput.focus();
@@ -1406,6 +1473,9 @@ getKeyBtn.addEventListener('click', async () => {
   function getApiKey() {
     const key = apiKeyInput.value.trim();
     if (!key) {
+      if (getApiProvider() === '9router') {
+        return '9router';
+      }
       showToast(t('enter_api_key_first'), 'error');
       apiKeyInput.focus();
       return null;
@@ -1898,7 +1968,10 @@ Return ONLY the refined translation, one line per bubble, in the same order as a
       contents: [{
         parts: [
           { text: promptText },
-          { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64Image } }
+          {
+            inline_data: { mime_type: mimeType || 'image/jpeg', data: base64Image },
+            inlineData: { mimeType: mimeType || 'image/jpeg', data: base64Image }
+          }
         ]
       }],
       generationConfig: {
@@ -1913,10 +1986,17 @@ Return ONLY the refined translation, one line per bubble, in the same order as a
     let busyAttempt = 0;
     const triedModels = new Set();
     while (true) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+      const keyQuery = apiKey ? `?key=${encodeURIComponent(apiKey)}` : '';
+      const url = `${baseUrl}/v1beta/models/${model}:generateContent${keyQuery}`;
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey) {
+        headers['x-goog-api-key'] = apiKey;
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify(body)
       });
 
@@ -2030,7 +2110,12 @@ Return ONLY the refined translation, one line per bubble, in the same order as a
 
       const data = await response.json();
       const parts = data.candidates?.[0]?.content?.parts || [];
-      return parts.map(p => p.text || '').join('').trim();
+      const geminiText = parts.map(p => p.text || '').join('').trim();
+      if (geminiText) return geminiText;
+      if (data.choices?.[0]?.message?.content) {
+        return data.choices[0].message.content.trim();
+      }
+      return '';
     }
   }
 
