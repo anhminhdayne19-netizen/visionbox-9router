@@ -15,4 +15,4 @@ if which xdg-open > /dev/null 2>&1; then
   (sleep 1 && xdg-open "http://localhost:$PORT") &
 fi
 
-python3 -m http.server "$PORT"
+python3 server.py "$PORT"

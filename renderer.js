@@ -197,7 +197,10 @@
       return 'https://generativelanguage.googleapis.com';
     }
     if (getApiProvider() === '9router') {
-      return raw || 'http://localhost:20128';
+      if (raw.includes('localhost')) {
+        raw = raw.replace('localhost', '127.0.0.1');
+      }
+      return raw || 'http://127.0.0.1:20128';
     }
     return raw || 'https://generativelanguage.googleapis.com';
   }
@@ -215,8 +218,17 @@
   async function populate9RouterModels() {
     try {
       const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/v1/models`);
-      if (!res.ok) return;
+      let res = null;
+      if (window.location.protocol.startsWith('http') && (baseUrl.includes('127.0.0.1') || baseUrl.includes('localhost'))) {
+        try {
+          res = await fetch('/proxy/v1/models');
+          if (!res.ok) res = null;
+        } catch (_) {}
+      }
+      if (!res) {
+        res = await fetch(`${baseUrl}/v1/models`);
+      }
+      if (!res || !res.ok) return;
       const data = await res.json();
       if (Array.isArray(data.data) && data.data.length > 0) {
         const currentModel = modelSelect.value;
@@ -1518,7 +1530,7 @@ document.getElementById('lang-select').addEventListener('change', (e) => {
 getKeyBtn.addEventListener('click', async () => {
   let url = 'https://aistudio.google.com/api-keys';
   if (getApiProvider() === '9router') {
-    url = getApiBaseUrl();
+    url = getApiBaseUrl().replace(/\/+$/, '') + '/dashboard';
   }
   try {
     // Gọi command Rust đã có sẵn
@@ -2107,15 +2119,48 @@ Return ONLY the refined translation, one line per bubble, in the same order as a
         };
       }
 
-      let response;
-      try {
-        response = await fetch(url, {
-          method: 'POST',
-          headers: headers,
-          body: JSON.stringify(bodyData)
-        });
-      } catch (networkErr) {
-        throw new Error(`${networkErr.message} (Kiểm tra lại xem ${is9Router ? '9Router có đang chạy ở ' + baseUrl + ' không' : 'kết nối mạng'})`);
+      let response = null;
+      let lastNetworkErr = null;
+
+      if (is9Router) {
+        const targetUrls = [];
+        // Nếu đang mở qua web server cục bộ, ưu tiên /proxy/v1/chat/completions (cùng origin, 0 CORS, 0 NetworkError)
+        if (window.location.protocol.startsWith('http') && (baseUrl.includes('127.0.0.1') || baseUrl.includes('localhost'))) {
+          targetUrls.push('/proxy/v1/chat/completions');
+        }
+        targetUrls.push(`${baseUrl}/v1/chat/completions`);
+
+        for (const testUrl of targetUrls) {
+          try {
+            response = await fetch(testUrl, {
+              method: 'POST',
+              headers: headers,
+              body: JSON.stringify(bodyData)
+            });
+            if (response.status === 404 && testUrl.startsWith('/proxy')) {
+              response = null;
+              continue;
+            }
+            lastNetworkErr = null;
+            break;
+          } catch (err) {
+            lastNetworkErr = err;
+            response = null;
+          }
+        }
+        if (!response) {
+          throw new Error(`${lastNetworkErr ? lastNetworkErr.message : 'NetworkError'} (Kiểm tra lại xem 9Router có đang chạy ở ${baseUrl} không)`);
+        }
+      } else {
+        try {
+          response = await fetch(url, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(bodyData)
+          });
+        } catch (networkErr) {
+          throw new Error(`${networkErr.message} (Kiểm tra lại kết nối mạng)`);
+        }
       }
 
       // Dem CHINH XAC moi lan thuc su goi API (moi lan fetch, ke ca cac lan
@@ -2226,12 +2271,33 @@ Return ONLY the refined translation, one line per bubble, in the same order as a
         throw new Error(msg);
       }
 
+      // Ho tro doc ca SSE stream (text/event-stream) lan JSON thong thuong
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/event-stream')) {
+        const rawText = await response.text();
+        let streamText = '';
+        const lines = rawText.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
+            try {
+              const chunk = JSON.parse(trimmed.slice(6));
+              streamText += chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.text || '';
+            } catch (_) {}
+          }
+        }
+        if (streamText) return streamText.trim();
+      }
+
       const data = await response.json();
       const parts = data.candidates?.[0]?.content?.parts || [];
       const geminiText = parts.map(p => p.text || '').join('').trim();
       if (geminiText) return geminiText;
       if (data.choices?.[0]?.message?.content) {
         return data.choices[0].message.content.trim();
+      }
+      if (data.choices?.[0]?.text) {
+        return data.choices[0].text.trim();
       }
       return '';
     }
