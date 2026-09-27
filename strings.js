@@ -239,6 +239,7 @@ const STRINGS = {
     lang_ja: 'Japanese',
     lang_manga_ja: 'Manga Japanese',
     lang_manga_en: 'Manga English',
+    lang_manga_vi: 'Manga Vietnamese',
     prompt_placeholder: 'Prompt...',
 
     // Usage modal
@@ -506,6 +507,7 @@ const STRINGS = {
     lang_ja: 'Tiếng Nhật',
     lang_manga_ja: 'Manga tiếng Nhật',
     lang_manga_en: 'Manga tiếng Anh',
+    lang_manga_vi: 'Manga tiếng Việt',
     prompt_placeholder: 'Nhập yêu cầu...',
 
     // Usage modal

@@ -572,10 +572,10 @@ const isAppShortcut = allowedAppShortcuts.some(s =>
 
   // LANG_NAMES: dung de dua vao PROMPT gui cho AI (luon giu tieng Anh, khong
   // doi theo ngon ngu giao dien) - KHONG dung de hien thi len UI.
-  const LANG_NAMES = { ko: 'Korean', en: 'English', vi: 'Vietnamese', zh: 'Chinese', ja: 'Japanese', 'manga-en': 'English' };
+  const LANG_NAMES = { ko: 'Korean', en: 'English', vi: 'Vietnamese', zh: 'Chinese', ja: 'Japanese', 'manga-en': 'English', 'manga-vi': 'Vietnamese' };
   // LANG_DISPLAY_KEYS + langDisplayName(): dung de HIEN THI len UI (dropdown,
   // hop thoai xac nhan...), tu dong doi theo ngon ngu giao dien hien tai.
-  const LANG_DISPLAY_KEYS = { ko: 'lang_ko', en: 'lang_en', vi: 'lang_vi', zh: 'lang_zh', ja: 'lang_ja', 'manga-en': 'lang_manga_en' };
+  const LANG_DISPLAY_KEYS = { ko: 'lang_ko', en: 'lang_en', vi: 'lang_vi', zh: 'lang_zh', ja: 'lang_ja', 'manga-en': 'lang_manga_en', 'manga-vi': 'lang_manga_vi' };
   function langDisplayName(code) {
     const key = LANG_DISPLAY_KEYS[code];
     return key ? t(key) : code;
@@ -1019,11 +1019,13 @@ document.getElementById('lang-select').addEventListener('change', (e) => {
     webtoon: [
       { value: 'ko', i18nKey: 'lang_ko' },
       { value: 'en', i18nKey: 'lang_en' },
-      { value: 'zh', i18nKey: 'lang_zh' }
+      { value: 'zh', i18nKey: 'lang_zh' },
+      { value: 'vi', i18nKey: 'lang_vi' }
     ],
     manga: [
       { value: 'ja', i18nKey: 'lang_manga_ja' },
-      { value: 'manga-en', i18nKey: 'lang_manga_en' }
+      { value: 'manga-en', i18nKey: 'lang_manga_en' },
+      { value: 'manga-vi', i18nKey: 'lang_manga_vi' }
     ]
   };
 
@@ -1882,6 +1884,36 @@ IMPORTANT INSTRUCTIONS:
 6. Do not add any explanation or commentary besides the scanned text.
 ${bubbleRule}
 ${sfxInstruction}
+    if (sourceLang === 'manga-vi') {
+      return `This is a page from a Vietnamese-language manga (a Vietnamese scanlation or edition that keeps the ORIGINAL Japanese manga panel layout - the dialogue is in Vietnamese, but the physical panel layout reads right-to-left).
+
+FOLLOW THIS EXACT STEP-BY-STEP PROCEDURE TO DETERMINE THE READING ORDER:
+Step 1: Look at the page and mentally split it into horizontal rows ("tiers") of panels, ordered from the TOP of the page down to the BOTTOM.
+Step 2: Within each tier, process panels from RIGHT to LEFT.
+Step 3: Within each panel, bubbles positioned more to the right (or higher up) come before ones to their left / below.
+
+IMPORTANT INSTRUCTIONS:
+1. Apply the step-by-step procedure above to determine the order of your output lines. This is mandatory.
+2. Extract the original Vietnamese text of each bubble exactly as written, preserving all Vietnamese diacritics (dấu tiếng Việt: sắc, huyền, hỏi, ngã, nặng, các chữ ă, â, đ, ê, ô, ơ, ư) and punctuation marks.
+3. Each separate bubble/box goes on its own single output line, with all wrapped text inside that bubble merged into that one line (see the bubble boundary rule below). This is mandatory.
+4. Do NOT translate or summarize anything - extract the Vietnamese text exactly as written.
+5. Do not add any explanation or commentary besides the scanned text.
+${bubbleRule}
+${sfxInstruction}
+${outro}`;
+    }
+
+    if (sourceLang === 'vi') {
+      return `This is a page from a Vietnamese comic (webtoon / truyện tranh). Your task is to OCR the text from the speech bubbles / text boxes on this page.
+
+IMPORTANT INSTRUCTIONS:
+1. Scan in true reading order: top to bottom, left to right.
+2. Each separate bubble/box goes on its own output line (see the bubble boundary rule below).
+3. Extract the original Vietnamese text exactly as written, preserving all Vietnamese diacritics (sắc, huyền, hỏi, ngã, nặng, ă, â, đ, ê, ô, ơ, ư) and punctuation marks.
+4. Do NOT translate or summarize anything.
+5. Do not add any explanation or commentary besides the scanned text.
+${bubbleRule}
+${sfxInstruction}
 ${outro}`;
     }
 
@@ -2344,6 +2376,11 @@ Return ONLY the refined translation, one line per bubble, in the same order as a
   }
 
   async function runTranslate(imageData, itemIndex) {
+    const src = sourceLangSelect.value;
+    const tgt = targetLangSelect.value;
+    if ((src === 'vi' || src === 'manga-vi') && tgt === 'vi') {
+      return imageData.ocrResult || '';
+    }
     const apiKey = getApiKey();
     if (!apiKey) throw new Error(t('missing_api_key'));
     const base64 = imageData.dataUrl.split(',')[1];
