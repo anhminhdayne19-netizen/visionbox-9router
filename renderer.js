@@ -1884,6 +1884,9 @@ IMPORTANT INSTRUCTIONS:
 6. Do not add any explanation or commentary besides the scanned text.
 ${bubbleRule}
 ${sfxInstruction}
+${outro}`;
+    }
+
     if (sourceLang === 'manga-vi') {
       return `This is a page from a Vietnamese-language manga (a Vietnamese scanlation or edition that keeps the ORIGINAL Japanese manga panel layout - the dialogue is in Vietnamese, but the physical panel layout reads right-to-left).
 
