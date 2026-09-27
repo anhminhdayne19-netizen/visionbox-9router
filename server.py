@@ -11,7 +11,7 @@ import sys
 import json
 import urllib.request
 import urllib.error
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
 ROUTER_BASE = os.environ.get("ROUTER_BASE", "http://127.0.0.1:20128").rstrip("/")
@@ -69,7 +69,7 @@ class VisionBoxHandler(SimpleHTTPRequestHandler):
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=300) as resp:
                 resp_bytes = resp.read()
                 self.send_response(resp.status)
                 for k, v in resp.headers.items():
@@ -102,7 +102,7 @@ class VisionBoxHandler(SimpleHTTPRequestHandler):
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     server_address = ('0.0.0.0', PORT)
-    httpd = HTTPServer(server_address, VisionBoxHandler)
+    httpd = ThreadingHTTPServer(server_address, VisionBoxHandler)
     print(f"==================================================")
     print(f"  VisionBox (Tích hợp 9Router Proxy)")
     print(f"  Giao diện: http://localhost:{PORT} hoặc http://127.0.0.1:{PORT}")

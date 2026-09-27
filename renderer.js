@@ -236,6 +236,22 @@
           .filter(m => m.capabilities?.vision || m.id.includes('flash') || m.id.includes('gemini') || m.id.includes('gpt') || m.id.includes('claude'))
           .map(m => m.id);
         if (models.length > 0) {
+          const preferredOrder = [
+            'ag/gemini-3.8-flash-low',
+            'ag/gemini-3.8-flash',
+            'ag/gemini-3.7-flash-low',
+            'ag/gemini-3.7-flash',
+            'gc/gemini-2.5-flash'
+          ];
+          models.sort((a, b) => {
+            const idxA = preferredOrder.indexOf(a);
+            const idxB = preferredOrder.indexOf(b);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return a.localeCompare(b);
+          });
+
           modelSelect.innerHTML = '';
           models.forEach(id => {
             const opt = document.createElement('option');
@@ -250,6 +266,8 @@
 
           if (models.includes(currentModel)) {
             modelSelect.value = currentModel;
+          } else if (models.includes('ag/gemini-3.8-flash-low')) {
+            modelSelect.value = 'ag/gemini-3.8-flash-low';
           } else if (models.includes('ag/gemini-3.8-flash')) {
             modelSelect.value = 'ag/gemini-3.8-flash';
           } else {
@@ -2295,6 +2313,18 @@ Return ONLY the refined translation, one line per bubble, in the same order as a
           throw new Error('Retry queue stopped by user.');
         }
         continue;
+      }
+
+      if (response.status === 502 || response.status === 504) {
+        busyAttempt++;
+        if (retryQueueCancelled) {
+          throw new Error('Retry queue stopped by user.');
+        }
+        if (busyAttempt <= 2) {
+          showToast(`9Router/mạng bận hoặc phản hồi chậm, tự động thử lại sau 3s (lần ${busyAttempt}/2)...`, 'warning');
+          await sleep(3000);
+          continue;
+        }
       }
 
       if (!response.ok) {
