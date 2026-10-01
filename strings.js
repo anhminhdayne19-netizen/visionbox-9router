@@ -35,6 +35,7 @@ const STRINGS = {
     clear_all: 'Clear all',
     content_type_webtoon: 'Webtoon',
     content_type_manga: 'Manga',
+    content_type_invoice: 'Invoice / Receipt',
 
     // Settings panel
     settings: 'Settings',
@@ -240,6 +241,10 @@ const STRINGS = {
     lang_manga_ja: 'Manga Japanese',
     lang_manga_en: 'Manga English',
     lang_manga_vi: 'Manga Vietnamese',
+    lang_invoice_vi: 'Vietnamese (Invoice)',
+    lang_invoice_en: 'English (Invoice)',
+    lang_invoice_any: 'Auto-detect (Invoice)',
+    export_csv: '.csv (Excel)',
     prompt_placeholder: 'Prompt...',
 
     // Usage modal
@@ -303,6 +308,7 @@ const STRINGS = {
     clear_all: 'Xóa tất cả',
     content_type_webtoon: 'Webtoon',
     content_type_manga: 'Manga',
+    content_type_invoice: 'Hóa đơn / Biên lai',
 
     // Settings panel
     settings: 'Cài đặt',
@@ -508,6 +514,10 @@ const STRINGS = {
     lang_manga_ja: 'Manga tiếng Nhật',
     lang_manga_en: 'Manga tiếng Anh',
     lang_manga_vi: 'Manga tiếng Việt',
+    lang_invoice_vi: 'Hóa đơn Tiếng Việt',
+    lang_invoice_en: 'Hóa đơn Tiếng Anh',
+    lang_invoice_any: 'Tự động nhận diện (Hóa đơn)',
+    export_csv: '.csv (Excel)',
     prompt_placeholder: 'Nhập yêu cầu...',
 
     // Usage modal

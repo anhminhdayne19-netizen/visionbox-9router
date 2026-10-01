@@ -110,6 +110,30 @@
               setTimeout(() => URL.revokeObjectURL(url), 1000);
               return true;
             }
+            if (format === 'csv') {
+              let csvContent = '\uFEFF';
+              const lines = String(content).split(/\r\n|\r|\n/);
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+                  if (/^\|[\s\-:]+(\|[\s\-:]+)+\|$/.test(trimmed)) continue;
+                  const cells = trimmed.slice(1, -1).split('|').map(c => `"${c.trim().replace(/"/g, '""')}"`);
+                  csvContent += cells.join(',') + '\r\n';
+                } else if (trimmed) {
+                  csvContent += `"${trimmed.replace(/"/g, '""')}"\r\n`;
+                }
+              }
+              const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${suggestedName}.csv`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+              return true;
+            }
             const ext = format || 'txt';
             const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
             const url = URL.createObjectURL(blob);
@@ -447,6 +471,7 @@ function applyLanguage(lang) {
   // Cập nhật lại option "Ngôn ngữ nguồn" (select này bị JS ghi đè innerHTML
   // trong applyContentType() nên data-i18n không tự quét tới được)
   applyContentType(currentContentType, sourceLangSelect.value);
+  contentTypeBtnLabel.textContent = contentTypeLabel(currentContentType);
 
   // Cập nhật selection bar
   updateSelectionUI(); // Hàm này sẽ được sửa để dùng t() bên trong
@@ -590,10 +615,10 @@ const isAppShortcut = allowedAppShortcuts.some(s =>
 
   // LANG_NAMES: dung de dua vao PROMPT gui cho AI (luon giu tieng Anh, khong
   // doi theo ngon ngu giao dien) - KHONG dung de hien thi len UI.
-  const LANG_NAMES = { ko: 'Korean', en: 'English', vi: 'Vietnamese', zh: 'Chinese', ja: 'Japanese', 'manga-en': 'English', 'manga-vi': 'Vietnamese' };
+  const LANG_NAMES = { ko: 'Korean', en: 'English', vi: 'Vietnamese', zh: 'Chinese', ja: 'Japanese', 'manga-en': 'English', 'manga-vi': 'Vietnamese', 'invoice-vi': 'Vietnamese', 'invoice-en': 'English', 'invoice-any': 'Any' };
   // LANG_DISPLAY_KEYS + langDisplayName(): dung de HIEN THI len UI (dropdown,
   // hop thoai xac nhan...), tu dong doi theo ngon ngu giao dien hien tai.
-  const LANG_DISPLAY_KEYS = { ko: 'lang_ko', en: 'lang_en', vi: 'lang_vi', zh: 'lang_zh', ja: 'lang_ja', 'manga-en': 'lang_manga_en', 'manga-vi': 'lang_manga_vi' };
+  const LANG_DISPLAY_KEYS = { ko: 'lang_ko', en: 'lang_en', vi: 'lang_vi', zh: 'lang_zh', ja: 'lang_ja', 'manga-en': 'lang_manga_en', 'manga-vi': 'lang_manga_vi', 'invoice-vi': 'lang_invoice_vi', 'invoice-en': 'lang_invoice_en', 'invoice-any': 'lang_invoice_any' };
   function langDisplayName(code) {
     const key = LANG_DISPLAY_KEYS[code];
     return key ? t(key) : code;
@@ -668,10 +693,12 @@ const isAppShortcut = allowedAppShortcuts.some(s =>
     // Xac dinh Content type: uu tien gia tri da luu, neu chua co (config cu)
     // thi suy ra tu sourceLang da luu, mac dinh la webtoon.
     let contentType = 'webtoon';
-    if (cfg.contentType === 'webtoon' || cfg.contentType === 'manga') {
+    if (cfg.contentType === 'webtoon' || cfg.contentType === 'manga' || cfg.contentType === 'invoice') {
       contentType = cfg.contentType;
-    } else if (cfg.sourceLang === 'ja' || cfg.sourceLang === 'manga-en') {
+    } else if (cfg.sourceLang === 'ja' || cfg.sourceLang === 'manga-en' || cfg.sourceLang === 'manga-vi') {
       contentType = 'manga';
+    } else if (cfg.sourceLang && cfg.sourceLang.startsWith('invoice')) {
+      contentType = 'invoice';
     }
     setContentTypeUI(contentType);
     applyContentType(contentType, cfg.sourceLang);
@@ -1044,6 +1071,11 @@ document.getElementById('lang-select').addEventListener('change', (e) => {
       { value: 'ja', i18nKey: 'lang_manga_ja' },
       { value: 'manga-en', i18nKey: 'lang_manga_en' },
       { value: 'manga-vi', i18nKey: 'lang_manga_vi' }
+    ],
+    invoice: [
+      { value: 'invoice-vi', i18nKey: 'lang_invoice_vi' },
+      { value: 'invoice-en', i18nKey: 'lang_invoice_en' },
+      { value: 'invoice-any', i18nKey: 'lang_invoice_any' }
     ]
   };
 
@@ -1058,7 +1090,9 @@ document.getElementById('lang-select').addEventListener('change', (e) => {
  
   let currentContentType = 'webtoon';
   function contentTypeLabel(type) {
-    return type === 'manga' ? t('content_type_manga') : t('content_type_webtoon');
+    if (type === 'manga') return t('content_type_manga');
+    if (type === 'invoice') return t('content_type_invoice');
+    return t('content_type_webtoon');
   }
 
   function setContentTypeUI(type) {
@@ -1938,6 +1972,107 @@ ${sfxInstruction}
 ${outro}`;
     }
 
+    if (sourceLang === 'invoice-vi' || (currentContentType === 'invoice' && sourceLang.includes('vi'))) {
+      return `Bạn là một chuyên gia số hóa tài liệu và trích xuất dữ liệu hóa đơn, chứng từ (Invoice / Receipt OCR Specialist).
+Nhiệm vụ của bạn là nhận diện và trích xuất TOÀN BỘ dữ liệu từ ảnh chụp/scan hóa đơn, biên lai, phiếu thu hoặc giao dịch này với độ chính xác tuyệt đối 100%.
+
+YÊU CẦU ĐỊNH DẠNG ĐẦU RA (Xuất theo cấu trúc Markdown chuẩn, rõ ràng, chuyên nghiệp):
+
+### 1. THÔNG TIN CHUNG
+- **Đơn vị bán hàng / Cửa hàng / Công ty:** (Tên đơn vị, Mã số thuế, Địa chỉ, Số điện thoại)
+- **Khách hàng / Người mua:** (Tên khách hàng, Mã số thuế, Địa chỉ - nếu có)
+- **Số hóa đơn / Số biên lai / Mã hóa đơn:**
+- **Ngày giờ lập:** (Ngày/Tháng/Năm Giờ:Phút)
+- **Hình thức thanh toán:** (Tiền mặt, Chuyển khoản, Thẻ, Ví điện tử...)
+
+### 2. CHI TIẾT HÀNG HÓA / DỊCH VỤ
+Trình bày dưới dạng BẢNG MARKDOWN chuẩn (để người dùng có thể copy trực tiếp vào Excel):
+| STT | Tên hàng hóa / Dịch vụ | ĐVT | Số lượng | Đơn giá | Thành tiền | Ghi chú |
+| :---: | :--- | :---: | :---: | :---: | :---: | :--- |
+(Liệt kê đầy đủ từng dòng hàng hóa/dịch vụ có trong hóa đơn, giữ nguyên chính xác tên món, số lượng, đơn giá và thành tiền).
+
+### 3. TỔNG KẾT THANH TOÁN
+- **Cộng tiền hàng (Trước thuế):**
+- **Thuế suất GTGT / VAT:** (ví dụ: 8%, 10% và số tiền thuế tương ứng nếu có)
+- **Phí dịch vụ / Giảm giá / Chiết khấu:** (nếu có)
+- **TỔNG TIỀN THANH TOÁN:** 
+- **Số tiền bằng chữ:** (nếu có ghi trên hóa đơn)
+
+### 4. THÔNG TIN BỔ SUNG
+(Ghi lại các thông tin khác nếu có: Mã tra cứu hóa đơn điện tử, link tra cứu, số tài khoản ngân hàng thụ hưởng, mã QR, lời cảm ơn...).
+
+LƯU Ý QUAN TRỌNG:
+1. Giữ nguyên vẹn 100% tiếng Việt có dấu, đúng chính tả theo hóa đơn gốc (sắc, huyền, hỏi, ngã, nặng, ă, â, đ, ê, ô, ơ, ư).
+2. Các con số tiền tệ, số lượng, mã số thuế phải chính xác tuyệt đối, không được tự suy đoán hoặc làm tròn số.
+3. Nếu đây là biên lai/ảnh chụp màn hình chuyển khoản ngân hàng (App Banking): Trích xuất rõ Ngân hàng người gửi, Ngân hàng thụ hưởng, Tên người nhận, Số tài khoản, Số tiền, Thời gian, Nội dung chuyển khoản và Mã giao dịch.
+4. Không thêm các lời giải thích thừa ngoài nội dung trích xuất.`;
+    }
+
+    if (sourceLang === 'invoice-en' || (currentContentType === 'invoice' && sourceLang.includes('en'))) {
+      return `You are an expert document digitization and invoice/receipt data extraction specialist (OCR Specialist).
+Your task is to accurately extract ALL data from this invoice, receipt, or transaction voucher with 100% precision.
+
+OUTPUT FORMAT REQUIREMENTS (Standard clean Markdown):
+
+### 1. GENERAL INFORMATION
+- **Merchant / Vendor / Company:** (Name, Tax ID, Address, Phone)
+- **Customer / Buyer:** (Name, Tax ID, Address - if available)
+- **Invoice / Receipt Number:**
+- **Date & Time:**
+- **Payment Method:** (Cash, Credit Card, Bank Transfer, etc.)
+
+### 2. ITEM DETAILS
+Present as a standard MARKDOWN TABLE (ready for copying into Excel/spreadsheets):
+| # | Description / Item Name | Unit | Qty | Unit Price | Amount | Notes |
+| :---: | :--- | :---: | :---: | :---: | :---: | :--- |
+(List every single line item exactly as printed on the receipt/invoice).
+
+### 3. TOTAL & SUMMARY
+- **Subtotal (Before Tax):**
+- **Tax / VAT rate & amount:**
+- **Discount / Service Charge / Tip:** (if any)
+- **TOTAL AMOUNT DUE / PAID:**
+- **Amount in words:** (if printed)
+
+### 4. ADDITIONAL INFORMATION
+(Any other visible details: transaction ID, reference number, barcode/QR info, cashier name, notes).
+
+IMPORTANT:
+1. Keep all numbers, prices, and quantities exactly as printed. Do not hallucinate or guess.
+2. If this is a bank transfer receipt/screenshot: clearly state Sender Bank, Recipient Bank, Recipient Name, Account Number, Amount, Timestamp, Reference/Txn ID, and Memo/Description.
+3. Do not add conversational filler or unnecessary explanations.`;
+    }
+
+    if (sourceLang === 'invoice-any' || currentContentType === 'invoice') {
+      return `Bạn là chuyên gia số hóa tài liệu và trích xuất dữ liệu hóa đơn, biên lai (Invoice / Receipt OCR Specialist).
+Hãy quét toàn bộ ảnh hóa đơn/biên lai/chứng từ này bằng ngôn ngữ gốc của chứng từ và trích xuất dữ liệu có cấu trúc:
+
+### 1. THÔNG TIN CHUNG / GENERAL INFORMATION
+- Tên đơn vị bán / Cửa hàng / Merchant
+- Khách hàng / Customer
+- Số hóa đơn / Invoice / Receipt No.
+- Ngày giờ / Date & Time
+- Hình thức thanh toán / Payment Method
+
+### 2. BẢNG CHI TIẾT HÀNG HÓA / ITEM DETAILS
+Trình bày dưới dạng BẢNG MARKDOWN:
+| STT | Tên hàng hóa / Description | SL / Qty | Đơn giá / Unit Price | Thành tiền / Amount |
+|---|---|---|---|---|
+(Ghi đầy đủ từng dòng hàng hóa/món ăn/dịch vụ).
+
+### 3. TỔNG KẾT THANH TOÁN / TOTAL
+- Cộng tiền hàng / Subtotal
+- Thuế VAT / Tax
+- Giảm giá / Discount (nếu có)
+- TỔNG TIỀN / TOTAL AMOUNT
+- Số tiền bằng chữ (nếu có)
+
+### 4. THÔNG TIN KHÁC / ADDITIONAL INFO
+(Mã giao dịch, số tài khoản, ghi chú...)
+
+Tuyệt đối chính xác từng con số và tên sản phẩm. Không thêm lời bình luận thừa.`;
+    }
+
     return `This is a page from an English-language comic. Your task is to OCR the text from the speech bubbles / text boxes on this page.
 
 IMPORTANT INSTRUCTIONS:
@@ -1954,6 +2089,18 @@ ${outro}`;
   function buildTranslatePrompt(text, sourceLang, targetLang) {
     const sourceName = LANG_NAMES[sourceLang] || sourceLang;
     const targetName = LANG_NAMES[targetLang] || targetLang;
+
+    if (currentContentType === 'invoice' || sourceLang.startsWith('invoice')) {
+      return `You are a professional financial translator. Translate the following OCR receipt/invoice content from ${sourceName} into ${targetName}.
+Keep all table formatting, markdown headers, and numeric values (prices, dates, tax amounts, quantities) exactly intact. Only translate text descriptions, item names, and headers.
+Do not change numbers or calculations.
+
+Receipt/Invoice content:
+${text}
+
+Return ONLY the translated receipt/invoice in standard Markdown format.`;
+    }
+
     return `You are a professional translator with 20+ years of experience translating comics from ${sourceName} to ${targetName}.
 
 Below is the OCR text scanned from a comic page, along with the image of that same page. EACH LINE is a separate speech bubble / text box.
@@ -1985,6 +2132,17 @@ Return ONLY the translation. Do not add any explanation or notes.`;
   // nhau). Prompt nay KHONG goi lai buildOcrPrompt va khong lam thay doi
   // hanh vi cua OCR/Translate thong thuong.
   function buildRefineOcrPrompt(sourceLang, skipSfx, previousOcrText, contentType) {
+    if (contentType === 'invoice' || sourceLang.startsWith('invoice')) {
+      return `You are an expert financial document proofreader. Proofread and correct the following OCR scan of an invoice/receipt by comparing it carefully against the image.
+Verify all vendor/customer info, line items, quantities, prices, taxes, and totals against the image.
+Fix any typos, misread numbers, or misaligned columns.
+
+PREVIOUS OCR RESULT:
+${previousOcrText}
+
+Return ONLY the corrected invoice/receipt in clean Markdown format.`;
+    }
+
     const langName = LANG_NAMES[sourceLang] || sourceLang;
     const sfxNote = skipSfx
       ? `Sound-effect/onomatopoeia lettering drawn directly on the artwork (no bubble/box outline) should be EXCLUDED, same as before - do not add any SFX line.`
@@ -2411,7 +2569,7 @@ Return ONLY the refined translation, one line per bubble, in the same order as a
   async function runTranslate(imageData, itemIndex) {
     const src = sourceLangSelect.value;
     const tgt = targetLangSelect.value;
-    if ((src === 'vi' || src === 'manga-vi') && tgt === 'vi') {
+    if ((src === 'vi' || src === 'manga-vi' || src === 'invoice-vi') && tgt === 'vi') {
       return imageData.ocrResult || '';
     }
     const apiKey = getApiKey();
