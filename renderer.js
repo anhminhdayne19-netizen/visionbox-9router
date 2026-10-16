@@ -134,6 +134,41 @@
               setTimeout(() => URL.revokeObjectURL(url), 1000);
               return true;
             }
+            if (format === 'xlsx') {
+              if (typeof XLSX === 'undefined') {
+                throw new Error('Chưa tải được thư viện SheetJS (xlsx.full.min.js)');
+              }
+              const wb = XLSX.utils.book_new();
+              const rows = parseInvoiceToRows(content, suggestedName);
+              const ws = XLSX.utils.aoa_to_sheet(rows);
+              ws['!cols'] = autoFitColumns(rows);
+              XLSX.utils.book_append_sheet(wb, ws, 'Hóa Đơn');
+
+              const { headers, items } = parseInvoiceItems(content);
+              if (items.length > 0) {
+                const itemRows = [
+                  ['CHI TIẾT HÀNG HÓA / DỊCH VỤ'],
+                  [],
+                  headers,
+                  ...items.map(it => it.map(c => parseNumberIfPossible(c)))
+                ];
+                const wsItems = XLSX.utils.aoa_to_sheet(itemRows);
+                wsItems['!cols'] = autoFitColumns(itemRows);
+                XLSX.utils.book_append_sheet(wb, wsItems, 'Chi Tiết Món');
+              }
+
+              const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+              const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${suggestedName}.xlsx`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+              return true;
+            }
             const ext = format || 'txt';
             const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
             const url = URL.createObjectURL(blob);
@@ -163,6 +198,411 @@
     }
   })();
 
+  // ---------- Excel / Invoice export helpers & logic ----------
+  function parseNumberIfPossible(val) {
+    if (val === null || val === undefined) return '';
+    const s = String(val).trim();
+    if (/^0\d+$/.test(s)) return s;
+    const numClean = s.replace(/,/g, '');
+    if (/^-?\d+(\.\d+)?$/.test(numClean)) {
+      return Number(numClean);
+    }
+    return s;
+  }
+
+  function parseInvoiceItems(text) {
+    const lines = String(text || '').split(/\r?\n/);
+    const items = [];
+    let inTable = false;
+    let headers = [];
+
+    for (let line of lines) {
+      line = line.trim();
+      if (!line) continue;
+      if (line.startsWith('|') && line.endsWith('|')) {
+        if (/^\|[\s\-:]+(\|[\s\-:]+)+\|$/.test(line)) continue;
+        const cells = line.slice(1, -1).split('|').map(c => c.trim());
+        if (!inTable) {
+          headers = cells;
+          inTable = true;
+        } else {
+          items.push(cells);
+        }
+      } else {
+        if (inTable && items.length > 0) inTable = false;
+      }
+    }
+    return { headers, items };
+  }
+
+  function extractInvoiceSummary(text, filename = '') {
+    const summary = {
+      file: filename,
+      vendor: '',
+      taxId: '',
+      invoiceNo: '',
+      date: '',
+      payment: '',
+      subtotal: 0,
+      vat: 0,
+      total: 0
+    };
+
+    const lines = String(text || '').split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      const kv = trimmed.match(/^[-*]\s*\*\*(.*?)\*\*\s*[:：]?(.*)$/) || trimmed.match(/^[-*]\s*(.*?)\s*[:：]\s*(.*)$/);
+      if (kv) {
+        const k = kv[1].toLowerCase();
+        const v = kv[2].trim();
+        if (k.includes('cộng tiền hàng') || k.includes('trước thuế') || k.includes('subtotal')) {
+          const n = Number(v.replace(/[^0-9.-]/g, ''));
+          if (!isNaN(n) && n > 0) summary.subtotal = n;
+        } else if (k.includes('tiền thuế') || k.includes('vat') || k.includes('gtgt')) {
+          const pMatch = v.match(/\(([\d,.]+)\)/);
+          const raw = pMatch ? pMatch[1] : v;
+          const n = Number(raw.replace(/[^0-9.-]/g, ''));
+          if (!isNaN(n) && n > 0) summary.vat = n;
+        } else if (k.includes('tổng tiền') || k.includes('tổng cộng') || k.includes('total')) {
+          const n = Number(v.replace(/[^0-9.-]/g, ''));
+          if (!isNaN(n) && n > 0) summary.total = n;
+        } else if (k.includes('đơn vị') || k.includes('cửa hàng') || k.includes('công ty') || k.includes('merchant') || k.includes('vendor')) {
+          summary.vendor = summary.vendor || v;
+        } else if (k.includes('mã số thuế') || k.includes('mst') || (k.includes('thuế') && !k.includes('tiền'))) {
+          summary.taxId = summary.taxId || v;
+        } else if (k.includes('số hóa đơn') || k.includes('số biên lai') || k.includes('mã hóa đơn') || k.includes('invoice no') || k.includes('receipt no')) {
+          summary.invoiceNo = summary.invoiceNo || v;
+        } else if (k.includes('ngày') || k.includes('date') || k.includes('thời gian')) {
+          summary.date = summary.date || v;
+        } else if (k.includes('thanh toán') || k.includes('payment')) {
+          summary.payment = summary.payment || v;
+        }
+      }
+    }
+
+    if (summary.total === 0 && summary.subtotal > 0) {
+      summary.total = summary.subtotal + summary.vat;
+    }
+    return summary;
+  }
+
+  function parseInvoiceToRows(text, title = 'HÓA ĐƠN') {
+    const lines = String(text || '').split(/\r?\n/);
+    const rows = [];
+    rows.push([title.toUpperCase()]);
+    rows.push([]);
+
+    let inTable = false;
+    let tableRows = [];
+
+    for (let line of lines) {
+      line = line.trim();
+      if (!line) continue;
+
+      if (line.startsWith('|') && line.endsWith('|')) {
+        if (/^\|[\s\-:]+(\|[\s\-:]+)+\|$/.test(line)) continue;
+        const cells = line.slice(1, -1).split('|').map(c => parseNumberIfPossible(c));
+        tableRows.push(cells);
+        inTable = true;
+        continue;
+      }
+
+      if (inTable && tableRows.length > 0) {
+        rows.push(...tableRows);
+        rows.push([]);
+        tableRows = [];
+        inTable = false;
+      }
+
+      if (line.startsWith('#')) {
+        const hText = line.replace(/^#+\s*/, '').replace(/\*\*/g, '');
+        rows.push([hText]);
+        continue;
+      }
+
+      const kvMatch = line.match(/^[-*]\s*\*\*(.*?)\*\*\s*[:：]?(.*)$/) || line.match(/^[-*]\s*(.*?)\s*[:：]\s*(.*)$/);
+      if (kvMatch) {
+        const k = kvMatch[1].replace(/[:：]/g, '').trim();
+        const v = parseNumberIfPossible(kvMatch[2]);
+        rows.push([k, v]);
+        continue;
+      }
+
+      rows.push([line]);
+    }
+
+    if (tableRows.length > 0) {
+      rows.push(...tableRows);
+    }
+    return rows;
+  }
+
+  function autoFitColumns(rows) {
+    const colWidths = [];
+    (rows || []).forEach(r => {
+      if (Array.isArray(r)) {
+        r.forEach((val, colIdx) => {
+          const len = val !== null && val !== undefined ? String(val).length : 0;
+          colWidths[colIdx] = Math.max(colWidths[colIdx] || 10, Math.min(len + 3, 50));
+        });
+      }
+    });
+    return colWidths.map(w => ({ wch: w }));
+  }
+
+  function saveWorkbook(wb, filename) {
+    try {
+      if (typeof XLSX.writeFile === 'function') {
+        XLSX.writeFile(wb, filename);
+        return true;
+      }
+    } catch (e) {
+      console.warn('XLSX.writeFile error, falling back to Blob download:', e);
+    }
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
+  }
+
+  function exportSingleInvoiceToExcel(index) {
+    if (typeof XLSX === 'undefined') {
+      showToast('Chưa tải được thư viện SheetJS (xlsx.full.min.js)', 'error');
+      return;
+    }
+    const img = uploadedImages[index];
+    if (!img) return;
+    const ocrText = img.ocrResult;
+    if (!ocrText || !ocrText.trim()) {
+      showToast(t('run_ocr_first_excel'), 'warning');
+      return;
+    }
+
+    try {
+      const fileName = img.file?.name || `Hoa_don_${index + 1}`;
+      const baseName = fileName.replace(/\.[^/.]+$/, '');
+      const wb = XLSX.utils.book_new();
+
+      const rows = parseInvoiceToRows(ocrText, `HÓA ĐƠN: ${fileName}`);
+      const wsMain = XLSX.utils.aoa_to_sheet(rows);
+      wsMain['!cols'] = autoFitColumns(rows);
+      XLSX.utils.book_append_sheet(wb, wsMain, 'Hóa Đơn');
+
+      const { headers, items } = parseInvoiceItems(ocrText);
+      if (items.length > 0) {
+        const itemRows = [
+          ['CHI TIẾT HÀNG HÓA / DỊCH VỤ'],
+          [`Hóa đơn: ${fileName}`],
+          [],
+          headers,
+          ...items.map(it => it.map(c => parseNumberIfPossible(c)))
+        ];
+        const wsItems = XLSX.utils.aoa_to_sheet(itemRows);
+        wsItems['!cols'] = autoFitColumns(itemRows);
+        XLSX.utils.book_append_sheet(wb, wsItems, 'Chi Tiết Mặt Hàng');
+      }
+
+      saveWorkbook(wb, `${baseName}.xlsx`);
+      showToast(t('exported', { format: 'xlsx' }), 'success');
+    } catch (err) {
+      console.error('Lỗi xuất Excel đơn lẻ:', err);
+      showToast(t('export_failed') + ': ' + (err?.message || err), 'error');
+    }
+  }
+
+  function exportAllInvoicesToExcel() {
+    if (typeof XLSX === 'undefined') {
+      showToast('Chưa tải được thư viện SheetJS (xlsx.full.min.js)', 'error');
+      return;
+    }
+    const invoicesWithOcr = uploadedImages
+      .map((img, idx) => ({ img, idx }))
+      .filter(item => item.img.ocrResult && item.img.ocrResult.trim().length > 0);
+
+    if (invoicesWithOcr.length === 0) {
+      showToast(t('no_invoice_data'), 'warning');
+      return;
+    }
+
+    try {
+      const wb = XLSX.utils.book_new();
+
+      // 1. Sheet Tổng Hợp
+      const summaryHeaders = [
+        'STT',
+        'Tên Tệp Ảnh',
+        'Đơn Vị Bán / Người Bán',
+        'Mã Số Thuế',
+        'Số Hóa Đơn',
+        'Ngày',
+        'Hình Thức TT',
+        'Tiền Hàng (Trước Thuế)',
+        'Tiền Thuế (VAT)',
+        'Tổng Thanh Toán',
+        'Số Mặt Hàng'
+      ];
+
+      const summaryRows = [
+        ['BẢNG TỔNG HỢP HÓA ĐƠN / BIÊN LAI'],
+        [`Ngày xuất báo cáo: ${new Date().toLocaleString('vi-VN')}`],
+        [],
+        summaryHeaders
+      ];
+
+      let grandSubtotal = 0;
+      let grandVat = 0;
+      let grandTotal = 0;
+      let totalItemsAll = 0;
+
+      // 2. Sheet Chi Tiết Mặt Hàng
+      const allItemsHeaders = [
+        'STT',
+        'Số HĐ / Tệp',
+        'Tên Hàng Hóa, Dịch Vụ',
+        'ĐVT',
+        'Số Lượng',
+        'Đơn Giá',
+        'Thành Tiền',
+        'Ghi Chú / Thuế'
+      ];
+      const allItemsRows = [
+        ['BẢNG KÊ CHI TIẾT HÀNG HÓA TẤT CẢ HÓA ĐƠN'],
+        [`Số lượng hóa đơn: ${invoicesWithOcr.length}`],
+        [],
+        allItemsHeaders
+      ];
+
+      let globalItemStt = 0;
+      const usedSheetNames = new Set(['tổng hợp', 'tất cả mặt hàng']);
+      const singleSheets = [];
+
+      invoicesWithOcr.forEach((entry, i) => {
+        const { img, idx } = entry;
+        const fileName = img.file?.name || `Hoa_don_${idx + 1}`;
+        const baseName = fileName.replace(/\.[^/.]+$/, '');
+        const ocrText = img.ocrResult;
+
+        const sumInfo = extractInvoiceSummary(ocrText, fileName);
+        const { items } = parseInvoiceItems(ocrText);
+
+        grandSubtotal += (sumInfo.subtotal || 0);
+        grandVat += (sumInfo.vat || 0);
+        grandTotal += (sumInfo.total || 0);
+        totalItemsAll += items.length;
+
+        summaryRows.push([
+          i + 1,
+          fileName,
+          sumInfo.vendor || '',
+          sumInfo.taxId || '',
+          sumInfo.invoiceNo || '',
+          sumInfo.date || '',
+          sumInfo.payment || '',
+          sumInfo.subtotal > 0 ? sumInfo.subtotal : '',
+          sumInfo.vat > 0 ? sumInfo.vat : '',
+          sumInfo.total > 0 ? sumInfo.total : '',
+          items.length
+        ]);
+
+        if (items.length > 0) {
+          items.forEach(it => {
+            globalItemStt++;
+            const hId = sumInfo.invoiceNo || baseName;
+            let name = '', unit = '', qty = '', price = '', amount = '', note = '';
+            if (it.length === 1) {
+              name = it[0];
+            } else if (it.length === 2) {
+              name = it[0]; amount = it[1];
+            } else if (it.length === 3) {
+              name = it[0]; qty = it[1]; amount = it[2];
+            } else if (it.length === 4) {
+              name = it[0]; qty = it[1]; price = it[2]; amount = it[3];
+            } else if (it.length >= 5) {
+              const firstIsStt = /^\d+$/.test(String(it[0]).trim());
+              const offset = firstIsStt ? 1 : 0;
+              name = it[offset] || '';
+              unit = it[offset + 1] || '';
+              qty = it[offset + 2] || '';
+              price = it[offset + 3] || '';
+              amount = it[offset + 4] || '';
+              note = it.slice(offset + 5).join('; ');
+            }
+            allItemsRows.push([
+              globalItemStt,
+              hId,
+              name,
+              unit,
+              parseNumberIfPossible(qty),
+              parseNumberIfPossible(price),
+              parseNumberIfPossible(amount),
+              note
+            ]);
+          });
+        }
+
+        let cleanSheetName = (sumInfo.invoiceNo ? `HĐ_${sumInfo.invoiceNo}` : baseName)
+          .replace(/[\\/?*[\]:]/g, '_')
+          .trim();
+        if (!cleanSheetName) cleanSheetName = `HD_${i + 1}`;
+        cleanSheetName = cleanSheetName.slice(0, 25);
+        let uniqueSheetName = cleanSheetName;
+        let counter = 1;
+        while (usedSheetNames.has(uniqueSheetName.toLowerCase())) {
+          uniqueSheetName = `${cleanSheetName}_${counter++}`.slice(0, 31);
+        }
+        usedSheetNames.add(uniqueSheetName.toLowerCase());
+
+        const singleRows = parseInvoiceToRows(ocrText, `HÓA ĐƠN: ${fileName}`);
+        const wsSingle = XLSX.utils.aoa_to_sheet(singleRows);
+        wsSingle['!cols'] = autoFitColumns(singleRows);
+        singleSheets.push({ name: uniqueSheetName, ws: wsSingle });
+      });
+
+      // Dòng tổng cộng cho bảng tổng hợp
+      summaryRows.push([]);
+      summaryRows.push([
+        'TỔNG CỘNG',
+        `${invoicesWithOcr.length} hóa đơn`,
+        '', '', '', '', '',
+        grandSubtotal > 0 ? grandSubtotal : '',
+        grandVat > 0 ? grandVat : '',
+        grandTotal > 0 ? grandTotal : '',
+        totalItemsAll
+      ]);
+
+      const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+      wsSummary['!cols'] = autoFitColumns(summaryRows);
+      XLSX.utils.book_append_sheet(wb, wsSummary, 'Tổng Hợp');
+
+      if (globalItemStt > 0) {
+        const wsAllItems = XLSX.utils.aoa_to_sheet(allItemsRows);
+        wsAllItems['!cols'] = autoFitColumns(allItemsRows);
+        XLSX.utils.book_append_sheet(wb, wsAllItems, 'Tất Cả Mặt Hàng');
+      }
+
+      singleSheets.forEach(s => {
+        XLSX.utils.book_append_sheet(wb, s.ws, s.name);
+      });
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const exportFileName = `Tong_Hop_Hoa_Don_${dateStr}.xlsx`;
+      saveWorkbook(wb, exportFileName);
+      showToast(t('exported', { format: 'xlsx' }), 'success');
+    } catch (err) {
+      console.error('Lỗi xuất Excel tổng hợp:', err);
+      showToast(t('export_failed') + ': ' + (err?.message || err), 'error');
+    }
+  }
+
   // ---------- unified SVG icon set (dung chung cho markup tao dong bang JS) ----------
   const ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
   const ICON_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
@@ -176,6 +616,7 @@
   const translateBatchBtn = document.getElementById('translate-batch-btn');
   const clearAllBtn = document.getElementById('clear-all-btn');
   const combinedBatchBtn = document.getElementById('combined-batch-btn');
+  const invoiceExcelBatchBtn = document.getElementById('invoice-excel-batch-btn');
   // Nut nav-fab-toggle (hinh tron o goc) se "bien hinh" thanh vien dai de
   // hien thanh tien trinh khi dang OCR/dich hang loat - xem showBatchProgressUI().
   const navFabToggleBtn = document.getElementById('nav-fab-toggle');
@@ -1097,10 +1538,14 @@ document.getElementById('lang-select').addEventListener('change', (e) => {
 
   function setContentTypeUI(type) {
     currentContentType = type;
+    document.body.dataset.contentType = type;
     contentTypeBtnLabel.textContent = contentTypeLabel(type);
     contentTypeMenu.querySelectorAll('.content-type-option').forEach(opt => {
       opt.classList.toggle('active', opt.dataset.value === type);
     });
+    if (invoiceExcelBatchBtn) {
+      invoiceExcelBatchBtn.style.display = type === 'invoice' ? 'inline-flex' : 'none';
+    }
   }
 
   contentTypeBtn.addEventListener('click', (e) => {
@@ -2696,7 +3141,8 @@ Return ONLY the refined translation, one line per bubble, in the same order as a
 <div class="text-column">
   <div class="text-column-header">
     <span>${t('ocr_column')}</span>
-    <div style="display:flex; gap:4px;">
+    <div style="display:flex; gap:4px; align-items:center;">
+      <button type="button" class="export-single-excel-btn" data-index="${index}" title="Xuất file Excel cho hóa đơn này">📊 Excel</button>
       <button class="copy-btn" data-copy-target="ocr-${index}">${t('copy')}</button>
       <button class="history-btn" data-type="ocr" data-index="${index}" title="${t('view_versions_title')}">${t('versions')}</button>
     </div>
@@ -2726,6 +3172,10 @@ item.querySelectorAll('.history-btn').forEach(btn => {
     openHistoryModal(idx, type);
   });
 });
+    item.querySelector('.export-single-excel-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportSingleInvoiceToExcel(index);
+    });
     item.querySelector('.single-ocr-btn').addEventListener('click', () => processSingleOCR(index));
     item.querySelector('.single-translate-btn').addEventListener('click', () => processSingleTranslate(index));
     item.querySelector('.delete-single-btn').addEventListener('click', () => deleteSingleImage(index));
@@ -3562,6 +4012,7 @@ imageData.translationResult = text;
     translateBatchBtn.disabled = true;
     combinedBatchBtn.disabled = true;
     clearAllBtn.disabled = true;
+    if (invoiceExcelBatchBtn) invoiceExcelBatchBtn.disabled = true;
     showBatchProgressUI();
 
     const kindLabel = kind === 'ocr' ? t('ocr') : kind === 'refine-ocr' ? t('refine_ocr') : kind === 'refine-translate' ? t('refine_translate') : t('translation');
@@ -3658,6 +4109,7 @@ else {
     translateBatchBtn.disabled = true;
     combinedBatchBtn.disabled = true;
     clearAllBtn.disabled = true;
+    if (invoiceExcelBatchBtn) invoiceExcelBatchBtn.disabled = true;
     showBatchProgressUI();
 
     let done = 0;
@@ -3738,6 +4190,12 @@ else {
     if (!confirmed) return;
     processCombinedBatch();
   });
+
+  if (invoiceExcelBatchBtn) {
+    invoiceExcelBatchBtn.addEventListener('click', () => {
+      exportAllInvoicesToExcel();
+    });
+  }
 
   batchStopBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
@@ -4194,6 +4652,7 @@ if (ctrl && shift && (e.key === 'd' || e.key === 'D')) {
       translateBatchBtn.disabled = true;
       combinedBatchBtn.disabled = true;
       clearAllBtn.disabled = true;
+      if (invoiceExcelBatchBtn) invoiceExcelBatchBtn.disabled = true;
       placeholder.style.display = 'block';
       summarySection.style.display = 'none';
       hideBatchProgressUI();
@@ -4203,6 +4662,7 @@ if (ctrl && shift && (e.key === 'd' || e.key === 'D')) {
       clearAllBtn.disabled = false;
       const hasOcr = uploadedImages.some(i => i.ocrResult);
       translateBatchBtn.disabled = !hasOcr;
+      if (invoiceExcelBatchBtn) invoiceExcelBatchBtn.disabled = !hasOcr;
       placeholder.style.display = 'none';
     }
   }
@@ -4412,6 +4872,11 @@ return {
       const content = target ? target.innerText.trim() : '';
 
       if (!content) { showToast(t('no_content'), 'warning'); return; }
+
+      if (format === 'xlsx' && currentContentType === 'invoice' && targetId === 'summary-ocr-all') {
+        exportAllInvoicesToExcel();
+        return;
+      }
 
       try {
         const saved = await window.fileExport.save(content, format, suggestedName);

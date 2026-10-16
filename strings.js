@@ -244,7 +244,12 @@ const STRINGS = {
     lang_invoice_vi: 'Vietnamese (Invoice)',
     lang_invoice_en: 'English (Invoice)',
     lang_invoice_any: 'Auto-detect (Invoice)',
+    export_xlsx: '.xlsx (Excel)',
     export_csv: '.csv (Excel)',
+    export_invoices_excel: 'Export Invoices to Excel',
+    excel_invoice_single: 'Excel',
+    run_ocr_first_excel: 'Please run OCR on invoices before exporting to Excel.',
+    no_invoice_data: 'No invoice data found to export.',
     prompt_placeholder: 'Prompt...',
 
     // Usage modal
@@ -517,7 +522,12 @@ const STRINGS = {
     lang_invoice_vi: 'Hóa đơn Tiếng Việt',
     lang_invoice_en: 'Hóa đơn Tiếng Anh',
     lang_invoice_any: 'Tự động nhận diện (Hóa đơn)',
+    export_xlsx: '.xlsx (Excel)',
     export_csv: '.csv (Excel)',
+    export_invoices_excel: 'Xuất Excel hóa đơn',
+    excel_invoice_single: 'Excel',
+    run_ocr_first_excel: 'Vui lòng quét OCR hóa đơn trước khi xuất file Excel.',
+    no_invoice_data: 'Chưa có dữ liệu hóa đơn nào để xuất file Excel.',
     prompt_placeholder: 'Nhập yêu cầu...',
 
     // Usage modal

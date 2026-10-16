@@ -113,6 +113,7 @@
       <button id="ocr-batch-btn" class="btn btn-secondary" disabled data-i18n="ocr_all">OCR all</button>
       <button id="translate-batch-btn" class="btn btn-primary" disabled data-i18n="translate_all">Translate all</button>
       <button id="combined-batch-btn" class="btn btn-primary" disabled data-i18n="ocr_translate_all">OCR + Translate all</button>
+      <button id="invoice-excel-batch-btn" class="btn btn-success" style="display:none;" data-i18n="export_invoices_excel">📊 Xuất Excel hóa đơn</button>
       <button id="clear-all-btn" class="btn btn-danger" disabled data-i18n="clear_all">Clear all</button>
     </div>
 
@@ -339,9 +340,10 @@
         <div class="export-dropdown">
           <button type="button" class="export-btn" data-export-target="summary-ocr-all" data-export-name="ocr-all">Export</button>
           <div class="export-menu">
-            <button type="button" class="export-option" data-format="txt">.txt</button>
-            <button type="button" class="export-option" data-format="docx">.docx</button>
+            <button type="button" class="export-option" data-format="xlsx" data-i18n="export_xlsx">.xlsx (Excel)</button>
             <button type="button" class="export-option" data-format="csv" data-i18n="export_csv">.csv (Excel)</button>
+            <button type="button" class="export-option" data-format="docx">.docx</button>
+            <button type="button" class="export-option" data-format="txt">.txt</button>
           </div>
         </div>
         <button type="button" class="edit-mode-btn" data-edit-target="summary-ocr-all">Edit mode</button>
@@ -358,9 +360,10 @@
         <div class="export-dropdown">
           <button type="button" class="export-btn" data-export-target="summary-translation-all" data-export-name="translation-all">Export</button>
           <div class="export-menu">
-            <button type="button" class="export-option" data-format="txt">.txt</button>
-            <button type="button" class="export-option" data-format="docx">.docx</button>
+            <button type="button" class="export-option" data-format="xlsx" data-i18n="export_xlsx">.xlsx (Excel)</button>
             <button type="button" class="export-option" data-format="csv" data-i18n="export_csv">.csv (Excel)</button>
+            <button type="button" class="export-option" data-format="docx">.docx</button>
+            <button type="button" class="export-option" data-format="txt">.txt</button>
           </div>
         </div>
         <button type="button" class="edit-mode-btn" data-edit-target="summary-translation-all">Edit mode</button>
@@ -454,8 +457,9 @@
 
 
 <script src="jszip.min.js"></script>
+<script src="xlsx.full.min.js"></script>
 <script src="preload.js"></script>
-<script src="strings.js?v=9router-v7"></script>
-<script src="renderer.js?v=9router-v7"></script>
+<script src="strings.js?v=9router-v8"></script>
+<script src="renderer.js?v=9router-v8"></script>
 </body>
 </html>
