@@ -2725,10 +2725,15 @@ Trình bày dưới dạng BẢNG MARKDOWN chuẩn (để xuất trực tiếp v
 
 LƯU Ý QUAN TRỌNG:
 1. ĐẶC BIỆT VỚI CHỮ VIẾT TAY & SỔ GHI CHÉP: Đọc chuẩn xác chữ viết tay tiếng Việt có dấu. Chú ý các chữ/số bị gạch xóa (gạch đè, sửa đổi) thì lấy số liệu sửa lại mới nhất.
-2. Giữ nguyên vẹn 100% tiếng Việt có dấu, đúng chính tả theo tài liệu gốc (sắc, huyền, hỏi, ngã, nặng, ă, â, đ, ê, ô, ơ, ư).
-3. Các con số tiền tệ, số lượng, quy cách phải chính xác tuyệt đối, không được tự suy đoán hoặc làm tròn số.
-4. Nếu đây là biên lai/ảnh chụp màn hình chuyển khoản ngân hàng (App Banking): Trích xuất rõ Ngân hàng người gửi, Ngân hàng thụ hưởng, Tên người nhận, Số tài khoản, Số tiền, Thời gian, Nội dung chuyển khoản và Mã giao dịch.
-5. Không thêm các lời giải thích thừa ngoài nội dung trích xuất.`;
+2. QUY ƯỚC VIẾT TẮT SỔ RAU CỦ / NÔNG SẢN / CHỢ ĐẦU MỐI:
+   - Tên mặt hàng viết tắt: "su" hoặc "xu" = Su su; "xú" / "cây xú" = Cây xú / Su; "rốt" = Cà rốt; "chua" = Cà chua. (Ghi tên đầy đủ kèm chữ gốc trong ngoặc, ví dụ: "Su su (xu)", "Cà rốt (rốt)").
+   - Ký hiệu đơn giá viết tắt sau dấu nhân (x5, x7, x10, x12, x210...): Đây là đơn giá tính theo đơn vị NGHÌN ĐỒNG (5.000đ, 7.000đ, 10.000đ, 12.000đ, 210.000đ). Ví dụ: "350 xu x 7 = 2450" nghĩa là Số lượng = 350, Mặt hàng = Su su, Đơn giá = 7 (tức 7.000đ), Thành tiền = 2.450 (tức 2.450.000đ).
+   - Nếu đầu trang có ghi một con số đóng khung ở góc phải phía trên (ví dụ: 3590) rồi cộng dồn với các dòng ngày mới bên dưới: Đó là "Số dư nợ cũ mang sang" từ ngày trước.
+   - Nếu có các dòng "Trừ ..." (ví dụ: "Trừ 14 xu = -98", "Trừ 35 cây xú = 735"): Ghi rõ thành dòng giảm trừ (Số lượng âm và Thành tiền âm) để tổng cộng cuối cùng khớp 100% với số chốt trên giấy.
+3. Giữ nguyên vẹn 100% tiếng Việt có dấu, đúng chính tả theo tài liệu gốc (sắc, huyền, hỏi, ngã, nặng, ă, â, đ, ê, ô, ơ, ư).
+4. Các con số tiền tệ, số lượng, quy cách phải chính xác tuyệt đối, không được tự suy đoán hoặc làm tròn số.
+5. Nếu đây là biên lai/ảnh chụp màn hình chuyển khoản ngân hàng (App Banking): Trích xuất rõ Ngân hàng người gửi, Ngân hàng thụ hưởng, Tên người nhận, Số tài khoản, Số tiền, Thời gian, Nội dung chuyển khoản và Mã giao dịch.
+6. Không thêm các lời giải thích thừa ngoài nội dung trích xuất.`;
     }
 
     if (sourceLang === 'invoice-en' || (currentContentType === 'invoice' && sourceLang.includes('en'))) {
