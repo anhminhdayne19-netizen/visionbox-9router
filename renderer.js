@@ -202,12 +202,135 @@
   function parseNumberIfPossible(val) {
     if (val === null || val === undefined) return '';
     const s = String(val).trim();
-    if (/^0\d+$/.test(s)) return s;
-    const numClean = s.replace(/,/g, '');
+    if (!s) return '';
+    // Giữ nguyên chuỗi có số 0 ở đầu (MST, SĐT, mã HĐ) hoặc chuỗi ngày tháng (1/10, 05/10)
+    if (/^0\d+$/.test(s) || /^\d{1,2}[\/\-]\d{1,2}([\/\-]\d{2,4})?$/.test(s)) return s;
+    // Bỏ hậu tố tiền tệ / đơn vị phổ biến nếu chỉ có số đi kèm (vd: "130.780.000 đ", "100.000 VNĐ")
+    const stripped = s.replace(/\s*(vnđ|vnd|đ|đồng)$/i, '').trim();
+    // Định dạng Việt Nam: chấm phân cách hàng nghìn + phẩy thập phân (vd: 1.307,8 hoặc 130.780.000)
+    if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(stripped)) {
+      const normalized = stripped.replace(/\./g, '').replace(',', '.');
+      const n = Number(normalized);
+      if (!isNaN(n)) return n;
+    }
+    // Định dạng phẩy thập phân đơn giản (vd: 201,5 hoặc 1,5 hoặc 9,5)
+    if (/^-?\d+,\d{1,2}$/.test(stripped)) {
+      const n = Number(stripped.replace(',', '.'));
+      if (!isNaN(n)) return n;
+    }
+    // Định dạng quốc tế: phẩy phân cách hàng nghìn + chấm thập phân (vd: 130,780,000 hoặc 142.2)
+    const numClean = stripped.replace(/,/g, '');
     if (/^-?\d+(\.\d+)?$/.test(numClean)) {
       return Number(numClean);
     }
     return s;
+  }
+
+  function buildDailyPivotRows(headers, items, title = '') {
+    if (!headers || !items || items.length === 0) return null;
+    const lowerHeaders = headers.map(h => String(h || '').toLowerCase().trim());
+    const dateIdx = lowerHeaders.findIndex(h => h.includes('ngày') || h.includes('date'));
+    if (dateIdx === -1) return null;
+
+    const nameIdx = lowerHeaders.findIndex((h, idx) => idx !== dateIdx && (h.includes('tên') || h.includes('nội dung') || h.includes('mặt hàng') || h.includes('loại') || h.includes('description') || h.includes('item')));
+    const qtyIdx = lowerHeaders.findIndex(h => h.includes('số lượng') || h.includes('khối lượng') || h === 'sl' || h.includes('qty'));
+    const priceIdx = lowerHeaders.findIndex(h => h.includes('đơn giá') || h.includes('price'));
+    const amtIdx = lowerHeaders.findIndex(h => h.includes('thành tiền') || h.includes('tổng') || h.includes('amount'));
+
+    if (nameIdx === -1 || qtyIdx === -1) return null;
+
+    // Thu thập các loại mặt hàng duy nhất và gom nhóm theo ngày
+    const categories = [];
+    const catSet = new Set();
+    const dayOrder = [];
+    const dayMap = new Map();
+
+    items.forEach(row => {
+      const rawDate = String(row[dateIdx] || '').trim() || 'Khác';
+      const rawName = String(row[nameIdx] || '').trim() || 'Mặt hàng';
+      const qtyVal = parseNumberIfPossible(row[qtyIdx]);
+      const qty = typeof qtyVal === 'number' ? qtyVal : 0;
+      const priceVal = priceIdx !== -1 ? parseNumberIfPossible(row[priceIdx]) : '';
+      const price = typeof priceVal === 'number' ? priceVal : 0;
+      const amtVal = amtIdx !== -1 ? parseNumberIfPossible(row[amtIdx]) : '';
+      const amt = typeof amtVal === 'number' ? amtVal : (qty * price);
+
+      const normCat = rawName.toLowerCase();
+      if (!catSet.has(normCat)) {
+        catSet.add(normCat);
+        categories.push({ key: normCat, label: rawName });
+      }
+
+      if (!dayMap.has(rawDate)) {
+        dayMap.set(rawDate, {
+          date: rawDate,
+          catQty: {},
+          totalQty: 0,
+          price: price || '',
+          totalAmt: 0
+        });
+        dayOrder.push(rawDate);
+      }
+      const dEntry = dayMap.get(rawDate);
+      dEntry.catQty[normCat] = (dEntry.catQty[normCat] || 0) + qty;
+      dEntry.totalQty = Number((dEntry.totalQty + qty).toFixed(4));
+      if (price && !dEntry.price) dEntry.price = price;
+      dEntry.totalAmt = Number((dEntry.totalAmt + amt).toFixed(2));
+    });
+
+    if (dayOrder.length === 0) return null;
+
+    const pivotHeaders = [
+      'STT',
+      'Ngày',
+      ...categories.map(c => c.label),
+      'Tổng SL Ngày',
+      'Đơn Giá',
+      'Thành Tiền Ngày'
+    ];
+
+    const rows = [
+      [`BẢNG THEO DÕI TỪNG NGÀY & PHÂN LOẠI MẶT HÀNG${title ? ' - ' + title.toUpperCase() : ''}`],
+      [],
+      pivotHeaders
+    ];
+
+    const catTotals = {};
+    let grandQty = 0;
+    let grandAmt = 0;
+
+    dayOrder.forEach((dKey, idx) => {
+      const d = dayMap.get(dKey);
+      grandQty = Number((grandQty + d.totalQty).toFixed(4));
+      grandAmt = Number((grandAmt + d.totalAmt).toFixed(2));
+
+      const catCells = categories.map(c => {
+        const v = d.catQty[c.key] || 0;
+        catTotals[c.key] = Number(((catTotals[c.key] || 0) + v).toFixed(4));
+        return v > 0 ? v : '';
+      });
+
+      rows.push([
+        idx + 1,
+        d.date,
+        ...catCells,
+        d.totalQty,
+        d.price !== '' ? d.price : '',
+        d.totalAmt > 0 ? d.totalAmt : ''
+      ]);
+    });
+
+    rows.push([]);
+    rows.push([
+      'TỔNG CỘNG',
+      `${dayOrder.length} ngày`,
+      ...categories.map(c => catTotals[c.key] || 0),
+      grandQty,
+      '',
+      grandAmt > 0 ? grandAmt : ''
+    ]);
+
+    return rows;
   }
 
   function parseInvoiceItems(text) {
@@ -409,6 +532,13 @@
         const wsItems = XLSX.utils.aoa_to_sheet(itemRows);
         wsItems['!cols'] = autoFitColumns(itemRows);
         XLSX.utils.book_append_sheet(wb, wsItems, 'Chi Tiết Mặt Hàng');
+
+        const dailyPivotRows = buildDailyPivotRows(headers, items, fileName);
+        if (dailyPivotRows) {
+          const wsDaily = XLSX.utils.aoa_to_sheet(dailyPivotRows);
+          wsDaily['!cols'] = autoFitColumns(dailyPivotRows);
+          XLSX.utils.book_append_sheet(wb, wsDaily, 'Bảng Gộp Từng Ngày');
+        }
       }
 
       saveWorkbook(wb, `${baseName}.xlsx`);
@@ -467,6 +597,7 @@
       const allItemsHeaders = [
         'STT',
         'Số HĐ / Tệp',
+        'Ngày',
         'Tên Hàng Hóa, Dịch Vụ',
         'ĐVT',
         'Số Lượng',
@@ -492,7 +623,7 @@
         const ocrText = img.ocrResult;
 
         const sumInfo = extractInvoiceSummary(ocrText, fileName);
-        const { items } = parseInvoiceItems(ocrText);
+        const { headers, items } = parseInvoiceItems(ocrText);
 
         grandSubtotal += (sumInfo.subtotal || 0);
         grandVat += (sumInfo.vat || 0);
@@ -514,11 +645,29 @@
         ]);
 
         if (items.length > 0) {
+          const lowerH = (headers || []).map(h => String(h || '').toLowerCase().trim());
+          const colDate = lowerH.findIndex(h => h.includes('ngày') || h.includes('date'));
+          const colName = lowerH.findIndex((h, cIdx) => cIdx !== colDate && (h.includes('tên') || h.includes('nội dung') || h.includes('mặt hàng') || h.includes('loại') || h.includes('description') || h.includes('item')));
+          const colUnit = lowerH.findIndex(h => h.includes('đvt') || h.includes('đơn vị') || h.includes('unit'));
+          const colQty = lowerH.findIndex(h => h.includes('số lượng') || h.includes('khối lượng') || h === 'sl' || h.includes('qty'));
+          const colPrice = lowerH.findIndex(h => h.includes('đơn giá') || h.includes('price'));
+          const colAmt = lowerH.findIndex(h => h.includes('thành tiền') || h.includes('quy đổi') || h.includes('amount'));
+          const colNote = lowerH.findIndex(h => h.includes('ghi chú') || h.includes('note'));
+
           items.forEach(it => {
             globalItemStt++;
             const hId = sumInfo.invoiceNo || baseName;
-            let name = '', unit = '', qty = '', price = '', amount = '', note = '';
-            if (it.length === 1) {
+            let itemDate = sumInfo.date || '', name = '', unit = '', qty = '', price = '', amount = '', note = '';
+
+            if (colName !== -1 && colQty !== -1) {
+              if (colDate !== -1) itemDate = it[colDate] || itemDate;
+              name = it[colName] || '';
+              if (colUnit !== -1) unit = it[colUnit] || '';
+              qty = it[colQty] || '';
+              if (colPrice !== -1) price = it[colPrice] || '';
+              if (colAmt !== -1) amount = it[colAmt] || '';
+              if (colNote !== -1) note = it[colNote] || '';
+            } else if (it.length === 1) {
               name = it[0];
             } else if (it.length === 2) {
               name = it[0]; amount = it[1];
@@ -539,6 +688,7 @@
             allItemsRows.push([
               globalItemStt,
               hId,
+              itemDate,
               name,
               unit,
               parseNumberIfPossible(qty),
@@ -2418,35 +2568,41 @@ ${outro}`;
     }
 
     if (sourceLang === 'invoice-vi' || (currentContentType === 'invoice' && sourceLang.includes('vi'))) {
-      return `Bạn là một chuyên gia số hóa tài liệu và trích xuất dữ liệu hóa đơn, chứng từ, sổ sách kho hàng (Invoice / Receipt / Inventory OCR Specialist).
-Nhiệm vụ của bạn là nhận diện và trích xuất TOÀN BỘ dữ liệu từ ảnh chụp/scan hóa đơn, biên lai, phiếu thu, phiếu xuất/nhập kho, sổ tay ghi chép hàng hóa hoặc chứng từ viết tay này với độ chính xác tuyệt đối 100%.
+      return `Bạn là một chuyên gia số hóa tài liệu và trích xuất dữ liệu hóa đơn, chứng từ, sổ sách kho hàng & sổ chốt công nợ theo ngày (Invoice / Receipt / Daily Ledger OCR Specialist).
+Nhiệm vụ của bạn là nhận diện và trích xuất TOÀN BỘ dữ liệu từ ảnh chụp/scan hóa đơn, biên lai, phiếu thu, phiếu xuất/nhập kho, sổ tay ghi chép hàng hóa theo ngày hoặc chứng từ viết tay này với độ chính xác tuyệt đối 100%.
 
 YÊU CẦU ĐỊNH DẠNG ĐẦU RA (Xuất theo cấu trúc Markdown chuẩn, rõ ràng, chuyên nghiệp):
 
 ### 1. THÔNG TIN CHUNG
 - **Đơn vị bán hàng / Cửa hàng / Kho:** (Tên đơn vị, Địa chỉ, Số điện thoại nếu có)
 - **Khách hàng / Người nhận:** (Tên khách hàng, Địa chỉ nếu có)
-- **Số chứng từ / Phiếu:** (nếu có)
+- **Số chứng từ / Kỳ chốt sổ:** (Số phiếu hoặc Tháng/Kỳ chốt sổ, ví dụ: Tháng 10)
 - **Ngày giờ:** (Ngày/Tháng/Năm nếu có)
 - **Hình thức thanh toán:** (Tiền mặt, Chuyển khoản, Công nợ... nếu có)
 
 ### 2. CHI TIẾT HÀNG HÓA / DỊCH VỤ
-Trình bày dưới dạng BẢNG MARKDOWN chuẩn (để người dùng có thể copy hoặc xuất trực tiếp vào Excel):
+Trình bày dưới dạng BẢNG MARKDOWN chuẩn (để xuất trực tiếp vào Excel):
+- **Trường hợp 1 (Sổ ghi chép giao/nhận hàng theo từng ngày trong tháng, ví dụ: ngày 1/10, 5/10, 6/10...):** BẮT BUỘC có cột **Ngày** riêng biệt:
+| STT | Ngày | Tên hàng hóa / Nội dung | ĐVT | Số lượng | Đơn giá | Thành tiền | Ghi chú |
+| :---: | :---: | :--- | :---: | :---: | :---: | :---: | :--- |
+*(Lưu ý: Nếu dòng nào là "bổ sung thêm" nằm ngay dưới ngày nào thì gán đúng Ngày của dòng phía trên. Nếu đơn giá được ghi chung ở cuối sổ lúc chốt sổ, ví dụ "x 100" tức 100.000đ/kg để ra tổng tiền, hãy điền Đơn giá chuẩn và tự tính Thành tiền = Số lượng × Đơn giá cho từng dòng ngày để bảng Excel đầy đủ).*
+
+- **Trường hợp 2 (Hóa đơn / Phiếu kho thông thường trong 1 ngày):**
 | STT | Tên hàng hóa / Quy cách | ĐVT | Số lượng | Đơn giá | Thành tiền / Quy đổi | Ghi chú |
 | :---: | :--- | :---: | :---: | :---: | :---: | :--- |
-(Liệt kê đầy đủ từng dòng hàng hóa/dịch vụ, giữ nguyên chính xác tên món, số lượng, đơn vị tính thùng/bao/can/chai/hộp/gói/bịch/kg, và chi tiết quy đổi tương đương).
 
-### 3. TỔNG KẾT THANH TOÁN / TỔNG SỐ LƯỢNG
+### 3. TỔNG KẾT THANH TOÁN / CHỐT SỔ
+- **Tổng số lượng / Tổng khối lượng:** (ví dụ: 1.307,8 kg)
+- **Đơn giá chốt sổ:** (nếu có đơn giá chung)
 - **Cộng tiền hàng (Trước thuế):** (nếu có)
 - **Thuế suất GTGT / VAT:** (nếu có)
-- **TỔNG TIỀN THANH TOÁN:** (nếu có)
-- **Tổng số lượng mặt hàng:** (nếu có)
+- **TỔNG TIỀN THANH TOÁN:** (ghi con số chính xác để tổng hợp Excel, ví dụ: 130.780.000)
 
-### 4. THÔNG TIN BỔ SUNG
-(Ghi lại các thông tin khác nếu có: người giao, người nhận, ghi chú thêm...).
+### 4. THÔNG TIN BỔ SUNG & ĐỐI SOÁT TOÁN HỌC
+(Cộng kiểm tra lại toàn bộ cột Số lượng xem có khớp với số Tổng ghi ở cuối trang không. Nếu có dòng nào chữ viết tay dễ nhầm dấu chấm thập phân làm lệch tổng - ví dụ viết "83 kg" nhưng cộng tổng là "8,3 kg" - hãy ghi chú rõ để người dùng đối soát).
 
 LƯU Ý QUAN TRỌNG:
-1. ĐẶC BIỆT VỚI CHỮ VIẾT TAY & SỔ GHI CHÉP: Đọc chuẩn xác chữ viết tay tiếng Việt có dấu. Chú ý các chữ/số bị gạch xóa (gạch đè, sửa đổi) thì lấy số liệu sửa lại mới nhất. Giữ lại các chi tiết quy cách đóng gói (ví dụ: 11 bao = 550 kg, 20 thùng = 500 chai, 24 thùng + 2 lẻ...).
+1. ĐẶC BIỆT VỚI CHỮ VIẾT TAY & SỔ GHI CHÉP: Đọc chuẩn xác chữ viết tay tiếng Việt có dấu. Chú ý các chữ/số bị gạch xóa (gạch đè, sửa đổi) thì lấy số liệu sửa lại mới nhất.
 2. Giữ nguyên vẹn 100% tiếng Việt có dấu, đúng chính tả theo tài liệu gốc (sắc, huyền, hỏi, ngã, nặng, ă, â, đ, ê, ô, ơ, ư).
 3. Các con số tiền tệ, số lượng, quy cách phải chính xác tuyệt đối, không được tự suy đoán hoặc làm tròn số.
 4. Nếu đây là biên lai/ảnh chụp màn hình chuyển khoản ngân hàng (App Banking): Trích xuất rõ Ngân hàng người gửi, Ngân hàng thụ hưởng, Tên người nhận, Số tài khoản, Số tiền, Thời gian, Nội dung chuyển khoản và Mã giao dịch.
