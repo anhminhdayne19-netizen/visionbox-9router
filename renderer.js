@@ -2726,8 +2726,12 @@ Trình bày dưới dạng BẢNG MARKDOWN chuẩn (để xuất trực tiếp v
 LƯU Ý QUAN TRỌNG:
 1. ĐẶC BIỆT VỚI CHỮ VIẾT TAY & SỔ GHI CHÉP: Đọc chuẩn xác chữ viết tay tiếng Việt có dấu. Chú ý các chữ/số bị gạch xóa (gạch đè, sửa đổi) thì lấy số liệu sửa lại mới nhất.
 2. QUY ƯỚC VIẾT TẮT SỔ RAU CỦ / NÔNG SẢN / CHỢ ĐẦU MỐI:
-   - Tên mặt hàng viết tắt: "su" hoặc "xu" = Su su; "xú" / "cây xú" = Cây xú / Su; "rốt" = Cà rốt; "chua" = Cà chua. (Ghi tên đầy đủ kèm chữ gốc trong ngoặc, ví dụ: "Su su (xu)", "Cà rốt (rốt)").
-   - Ký hiệu đơn giá viết tắt sau dấu nhân (x5, x7, x10, x12, x210...): Đây là đơn giá tính theo đơn vị NGHÌN ĐỒNG (5.000đ, 7.000đ, 10.000đ, 12.000đ, 210.000đ). Ví dụ: "350 xu x 7 = 2450" nghĩa là Số lượng = 350, Mặt hàng = Su su, Đơn giá = 7 (tức 7.000đ), Thành tiền = 2.450 (tức 2.450.000đ).
+   - Tên mặt hàng viết tắt: "su" hoặc "xu" = Su su; "xú" / "cây xú" = Cây xú / Su; "rốt" = Cà rốt; "chua" = Cà chua; "Bí" = Bí. (Ghi tên đầy đủ kèm chữ gốc trong ngoặc nếu là viết tắt).
+   - Ký hiệu đơn giá viết tắt sau dấu nhân (x5, x7, x8, x9, x10, x12, x210...): Đây là đơn giá tính theo đơn vị NGHÌN ĐỒNG (5.000đ, 7.000đ, 8.000đ, 9.000đ, 10.000đ, 12.000đ, 210.000đ). Ví dụ: "350 xu x 7 = 2450" nghĩa là Số lượng = 350, Mặt hàng = Su su, Đơn giá = 7 (tức 7.000đ), Thành tiền = 2.450 (tức 2.450.000đ).
+   - Sổ giao 1 mã hàng nhiều ngày & gom nhóm đơn giá cuối trang (ví dụ tiêu đề ghi "Bí Trường Học T/5 x 9k", bên dưới ghi các ngày 5/10, 13/10, 21/10, 27/10):
+     + Tiêu đề đầu trang chứa Tên mặt hàng + Khách hàng/Điểm giao + Đơn giá chuẩn (ví dụ: Mặt hàng = Bí, Khách hàng = Trường Học).
+     + Dấu gạch ngang "———" ở cột nội dung là ký hiệu lặp lại chữ "đã giao" của dòng phía trên. Chữ "280k x 9" khi cộng chung tổng khối lượng với các dòng "kg" bên dưới là viết tắt của "280 kg x 9" (280 kg nhân đơn giá 9.000đ).
+     + Cuối trang thường ghi "TC: <Tổng kg>" (ví dụ: TC: 1130) và gom nhóm các ngày có cùng mức đơn giá để nhân một lần (ví dụ: 3 ngày giá 9k cộng lại "850 x 9 = 7.650", 1 ngày giá 8k "280 x 8 = 2.240", cộng tổng tiền = 9.890 tức 9.890.000đ). Hãy tính Thành tiền cho từng dòng ngày trong bảng VÀ trình bày rõ bảng/mục gom nhóm theo từng mức đơn giá ở phần Tổng kết để khớp 100% với cách tính tay.
    - Nếu đầu trang có ghi một con số đóng khung ở góc phải phía trên (ví dụ: 3590) rồi cộng dồn với các dòng ngày mới bên dưới: Đó là "Số dư nợ cũ mang sang" từ ngày trước.
    - Nếu có các dòng "Trừ ..." (ví dụ: "Trừ 14 xu = -98", "Trừ 35 cây xú = 735"): Ghi rõ thành dòng giảm trừ (Số lượng âm và Thành tiền âm) để tổng cộng cuối cùng khớp 100% với số chốt trên giấy.
 3. Giữ nguyên vẹn 100% tiếng Việt có dấu, đúng chính tả theo tài liệu gốc (sắc, huyền, hỏi, ngã, nặng, ă, â, đ, ê, ô, ơ, ư).
