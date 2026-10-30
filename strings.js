@@ -246,10 +246,15 @@ const STRINGS = {
     lang_invoice_any: 'Auto-detect (Invoice)',
     export_xlsx: '.xlsx (Excel)',
     export_csv: '.csv (Excel)',
+    export_gsheet: '🟢 Google Sheets',
     export_invoices_excel: 'Export Invoices to Excel',
+    export_invoices_gsheet: 'Open in Google Sheets',
     excel_invoice_single: 'Excel',
+    gsheet_invoice_single: 'Sheets',
     run_ocr_first_excel: 'Please run OCR on invoices before exporting to Excel.',
     no_invoice_data: 'No invoice data found to export.',
+    gsheet_copied_toast: 'Copied table to clipboard! Press Ctrl+V in cell A1 on the newly opened Google Sheet.',
+    gsheet_created_toast: 'Created Google Sheet directly in your Google Drive!',
     prompt_placeholder: 'Prompt...',
 
     // Usage modal
@@ -524,10 +529,15 @@ const STRINGS = {
     lang_invoice_any: 'Tự động nhận diện (Hóa đơn)',
     export_xlsx: '.xlsx (Excel)',
     export_csv: '.csv (Excel)',
+    export_gsheet: '🟢 Google Sheets',
     export_invoices_excel: 'Xuất Excel hóa đơn',
+    export_invoices_gsheet: 'Tạo Google Sheets',
     excel_invoice_single: 'Excel',
+    gsheet_invoice_single: 'Sheets',
     run_ocr_first_excel: 'Vui lòng quét OCR hóa đơn trước khi xuất file Excel.',
     no_invoice_data: 'Chưa có dữ liệu hóa đơn nào để xuất file Excel.',
+    gsheet_copied_toast: 'Đã copy bảng chuẩn! Chỉ cần bấm Ctrl+V vào ô A1 trên tab Google Sheet vừa mở.',
+    gsheet_created_toast: 'Đã tạo file Google Sheet trực tiếp trên Google Drive của bạn!',
     prompt_placeholder: 'Nhập yêu cầu...',
 
     // Usage modal

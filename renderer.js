@@ -753,6 +753,124 @@
     }
   }
 
+  const GSHEET_WEBHOOK_KEY = 'visionbox_gsheet_webhook_url';
+
+  function rowsToTsv(rows) {
+    return (rows || [])
+      .map(r => (Array.isArray(r) ? r.map(cell => String(cell ?? '').replace(/[\t\r\n]+/g, ' ').trim()).join('\t') : String(r ?? '')))
+      .join('\n');
+  }
+
+  async function sendOrOpenGoogleSheet(title, sheetsData, evt) {
+    let webhookUrl = localStorage.getItem(GSHEET_WEBHOOK_KEY) || '';
+    if (evt && evt.shiftKey) {
+      const input = window.prompt(
+        'Nhập Google Apps Script Web App URL để tự động tạo file trực tiếp trên Google Drive (Để trống nếu muốn dùng chế độ mở nhanh sheets.new + Ctrl+V):',
+        webhookUrl
+      );
+      if (input !== null) {
+        webhookUrl = input.trim();
+        if (webhookUrl) {
+          localStorage.setItem(GSHEET_WEBHOOK_KEY, webhookUrl);
+        } else {
+          localStorage.removeItem(GSHEET_WEBHOOK_KEY);
+        }
+      }
+    }
+
+    // Luôn copy sẵn bảng TSV vào Clipboard để người dùng có thể Ctrl+V bất cứ lúc nào
+    const combinedTsvBlocks = (sheetsData || []).map(sh => rowsToTsv(sh.rows)).join('\n\n');
+    try {
+      await navigator.clipboard.writeText(combinedTsvBlocks);
+    } catch (err) {
+      console.warn('Clipboard write warning:', err);
+    }
+
+    if (webhookUrl && /^https:\/\/script\.google\.com\/macros\/s\//i.test(webhookUrl)) {
+      try {
+        showToast('Đang khởi tạo bảng trực tiếp trên Google Sheets...', 'info', 4000);
+        const resp = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ title, sheets: sheetsData })
+        });
+        const data = await resp.json();
+        if (data && data.url) {
+          window.open(data.url, '_blank', 'noopener,noreferrer');
+          showToast(t('gsheet_created_toast'), 'success', 5000);
+          return true;
+        }
+      } catch (err) {
+        console.warn('Google Apps Script webhook error, falling back to sheets.new:', err);
+      }
+    }
+
+    window.open('https://sheets.new', '_blank', 'noopener,noreferrer');
+    showToast(t('gsheet_copied_toast'), 'success', 6000);
+    return true;
+  }
+
+  function exportSingleInvoiceToGSheet(index, evt) {
+    const img = uploadedImages[index];
+    if (!img) return;
+    const ocrText = img.ocrResult;
+    if (!ocrText || !ocrText.trim()) {
+      showToast(t('run_ocr_first_excel'), 'warning');
+      return;
+    }
+
+    const fileName = img.file?.name || `Hoa_don_${index + 1}`;
+    const baseName = fileName.replace(/\.[^/.]+$/, '');
+    const sheetsData = [];
+
+    const { headers, items } = parseInvoiceItems(ocrText);
+    const dailyPivotRows = buildDailyPivotRows(headers, items, fileName);
+    if (dailyPivotRows) {
+      sheetsData.push({ name: 'Bảng Gộp Từng Ngày', rows: dailyPivotRows });
+    }
+    if (items.length > 0) {
+      const itemRows = [
+        [`CHI TIẾT HÀNG HÓA - ${fileName.toUpperCase()}`],
+        headers,
+        ...items.map(it => it.map(c => parseNumberIfPossible(c)))
+      ];
+      sheetsData.push({ name: 'Chi Tiết Theo Sổ', rows: itemRows });
+    } else {
+      const mainRows = parseInvoiceToRows(ocrText, `HÓA ĐƠN: ${fileName}`);
+      sheetsData.push({ name: 'Hóa Đơn', rows: mainRows });
+    }
+
+    sendOrOpenGoogleSheet(`Bảng Kê - ${baseName}`, sheetsData, evt);
+  }
+
+  function exportAllInvoicesToGSheet(evt) {
+    const invoicesWithOcr = uploadedImages
+      .map((img, idx) => ({ img, idx }))
+      .filter(item => item.img.ocrResult && item.img.ocrResult.trim().length > 0);
+
+    if (invoicesWithOcr.length === 0) {
+      showToast(t('no_invoice_data'), 'warning');
+      return;
+    }
+
+    const sheetsData = [];
+    invoicesWithOcr.forEach((entry, i) => {
+      const { img, idx } = entry;
+      const fileName = img.file?.name || `Hoa_don_${idx + 1}`;
+      const ocrText = img.ocrResult;
+      const { headers, items } = parseInvoiceItems(ocrText);
+      const dailyPivotRows = buildDailyPivotRows(headers, items, fileName);
+      if (dailyPivotRows) {
+        sheetsData.push({ name: `Theo Ngày (${i + 1})`, rows: dailyPivotRows });
+      }
+      const rows = parseInvoiceToRows(ocrText, `HÓA ĐƠN ${i + 1}: ${fileName}`);
+      sheetsData.push({ name: `HĐ ${i + 1}`, rows });
+    });
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    sendOrOpenGoogleSheet(`Tổng Hợp Hóa Đơn ${dateStr}`, sheetsData, evt);
+  }
+
   // ---------- unified SVG icon set (dung chung cho markup tao dong bang JS) ----------
   const ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
   const ICON_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
@@ -767,6 +885,7 @@
   const clearAllBtn = document.getElementById('clear-all-btn');
   const combinedBatchBtn = document.getElementById('combined-batch-btn');
   const invoiceExcelBatchBtn = document.getElementById('invoice-excel-batch-btn');
+  const invoiceGsheetBatchBtn = document.getElementById('invoice-gsheet-batch-btn');
   // Nut nav-fab-toggle (hinh tron o goc) se "bien hinh" thanh vien dai de
   // hien thanh tien trinh khi dang OCR/dich hang loat - xem showBatchProgressUI().
   const navFabToggleBtn = document.getElementById('nav-fab-toggle');
@@ -1695,6 +1814,9 @@ document.getElementById('lang-select').addEventListener('change', (e) => {
     });
     if (invoiceExcelBatchBtn) {
       invoiceExcelBatchBtn.style.display = type === 'invoice' ? 'inline-flex' : 'none';
+    }
+    if (invoiceGsheetBatchBtn) {
+      invoiceGsheetBatchBtn.style.display = type === 'invoice' ? 'inline-flex' : 'none';
     }
   }
 
@@ -3298,7 +3420,8 @@ Return ONLY the refined translation, one line per bubble, in the same order as a
   <div class="text-column-header">
     <span>${t('ocr_column')}</span>
     <div style="display:flex; gap:4px; align-items:center;">
-      <button type="button" class="export-single-excel-btn" data-index="${index}" title="Xuất file Excel cho hóa đơn này">📊 Excel</button>
+      <button type="button" class="export-single-excel-btn" data-index="${index}" title="Xuất file Excel (.xlsx) cho hóa đơn này">📊 Excel</button>
+      <button type="button" class="export-single-gsheet-btn" data-index="${index}" title="Tạo bảng trực tiếp trên Google Sheets (Shift+Click: cài đặt tự động 100%)">🟢 Sheets</button>
       <button class="copy-btn" data-copy-target="ocr-${index}">${t('copy')}</button>
       <button class="history-btn" data-type="ocr" data-index="${index}" title="${t('view_versions_title')}">${t('versions')}</button>
     </div>
@@ -3331,6 +3454,10 @@ item.querySelectorAll('.history-btn').forEach(btn => {
     item.querySelector('.export-single-excel-btn')?.addEventListener('click', (e) => {
       e.stopPropagation();
       exportSingleInvoiceToExcel(index);
+    });
+    item.querySelector('.export-single-gsheet-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportSingleInvoiceToGSheet(index, e);
     });
     item.querySelector('.single-ocr-btn').addEventListener('click', () => processSingleOCR(index));
     item.querySelector('.single-translate-btn').addEventListener('click', () => processSingleTranslate(index));
@@ -4352,6 +4479,11 @@ else {
       exportAllInvoicesToExcel();
     });
   }
+  if (invoiceGsheetBatchBtn) {
+    invoiceGsheetBatchBtn.addEventListener('click', (e) => {
+      exportAllInvoicesToGSheet(e);
+    });
+  }
 
   batchStopBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
@@ -4809,6 +4941,7 @@ if (ctrl && shift && (e.key === 'd' || e.key === 'D')) {
       combinedBatchBtn.disabled = true;
       clearAllBtn.disabled = true;
       if (invoiceExcelBatchBtn) invoiceExcelBatchBtn.disabled = true;
+      if (invoiceGsheetBatchBtn) invoiceGsheetBatchBtn.disabled = true;
       placeholder.style.display = 'block';
       summarySection.style.display = 'none';
       hideBatchProgressUI();
@@ -4819,6 +4952,7 @@ if (ctrl && shift && (e.key === 'd' || e.key === 'D')) {
       const hasOcr = uploadedImages.some(i => i.ocrResult);
       translateBatchBtn.disabled = !hasOcr;
       if (invoiceExcelBatchBtn) invoiceExcelBatchBtn.disabled = !hasOcr;
+      if (invoiceGsheetBatchBtn) invoiceGsheetBatchBtn.disabled = !hasOcr;
       placeholder.style.display = 'none';
     }
   }
@@ -5028,6 +5162,16 @@ return {
       const content = target ? target.innerText.trim() : '';
 
       if (!content) { showToast(t('no_content'), 'warning'); return; }
+
+      if (format === 'gsheet') {
+        if (currentContentType === 'invoice' && targetId === 'summary-ocr-all') {
+          exportAllInvoicesToGSheet(e);
+        } else {
+          const rows = parseInvoiceToRows(content, suggestedName);
+          sendOrOpenGoogleSheet(suggestedName, [{ name: 'Sheet1', rows }], e);
+        }
+        return;
+      }
 
       if (format === 'xlsx' && currentContentType === 'invoice' && targetId === 'summary-ocr-all') {
         exportAllInvoicesToExcel();
